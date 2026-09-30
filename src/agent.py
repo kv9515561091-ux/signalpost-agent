@@ -11,6 +11,7 @@ class CompanyProfile(BaseModel):
     company_name: Optional[str] = None
     website: Optional[str] = None
     address: Optional[str] = None
+    industry_code: Optional[str] = None
     industry: Optional[str] = None
     registration_date: Optional[str] = None
     sources: list[str] = []
@@ -102,6 +103,7 @@ def build_profile(company_number: str) -> CompanyProfile:
         company_name=data["company_name"],
         website=data["website"],
         address=data["address"],
+        industry_code=industry.get("kode"),
         industry=industry_description,
         registration_date=data["registration_date"],
         sources=[source_url],
