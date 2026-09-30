@@ -4,6 +4,8 @@ from pydantic import BaseModel
 
 from src.brreg import get_company
 from src.evidence import Evidence
+from src.fact_extractor import extract_facts
+from src.fact_record import FactRecord
 
 
 class CompanyProfile(BaseModel):
@@ -16,6 +18,7 @@ class CompanyProfile(BaseModel):
     registration_date: Optional[str] = None
     sources: list[str] = []
     evidence: list[Evidence] = []
+    facts: list[FactRecord] = []
 
 
 def validate_company_number(company_number: str) -> bool:
@@ -73,6 +76,7 @@ def build_profile(company_number: str) -> CompanyProfile:
 
     industry = data.get("industry") or {}
     industry_description = industry.get("beskrivelse")
+    industry_code = industry.get("kode")
 
     if industry_description:
         evidence.append(
@@ -98,14 +102,50 @@ def build_profile(company_number: str) -> CompanyProfile:
             )
         )
 
+    facts = []
+
+    if data.get("website"):
+        from src.evidence_extractor import extract_page_evidence
+
+        website = data["website"]
+
+        if not website.startswith(("http://", "https://")):
+            website = "https://" + website
+
+        page_evidence = extract_page_evidence(
+            website,
+            data["company_name"],
+        )
+
+        if page_evidence["company_match"]:
+            extracted_facts = extract_facts(
+                page_evidence["evidence_text"],
+                data["company_name"],
+                website,
+            )
+
+            for field, value in extracted_facts.items():
+                if value is not None:
+                    facts.append(
+                        FactRecord(
+                            field=field,
+                            value=str(value),
+                            source_url=page_evidence["source_url"],
+                            retrieved_at=page_evidence["retrieved_at"],
+                            evidence_text=page_evidence["evidence_text"],
+                            confidence=1.0,
+                        )
+                    )
+
     return CompanyProfile(
         company_number=data["company_number"],
         company_name=data["company_name"],
         website=data["website"],
         address=data["address"],
-        industry_code=industry.get("kode"),
+        industry_code=industry_code,
         industry=industry_description,
         registration_date=data["registration_date"],
         sources=[source_url],
         evidence=evidence,
+        facts=facts,
     )

@@ -22,3 +22,7 @@ class Evidence:
             "confidence": self.confidence,
             "freshness": freshness_status(self.retrieved_at),
         }
+
+    @property
+    def freshness(self) -> dict:
+        return freshness_status(self.retrieved_at)

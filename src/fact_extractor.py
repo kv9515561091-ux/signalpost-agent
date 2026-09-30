@@ -7,15 +7,10 @@ def extract_facts(
     website: str | None = None,
 ) -> dict:
     """
-    Extract conservative, directly observable facts from page evidence.
+    Extract only conservative, directly observable facts.
     """
 
-    facts = {
-        "company_name": company_name,
-        "website": website,
-        "description": None,
-        "contact_information": None,
-    }
+    facts = {}
 
     text = " ".join(evidence_text.split())
 
@@ -27,18 +22,5 @@ def extract_facts(
 
     if email_match:
         facts["contact_information"] = email_match.group(0)
-
-    # Conservative description extraction.
-    description_patterns = [
-        r"(?i)(?:om oss|about us|om nav)[\s:]+(.{40,500})",
-        r"(?i)(?:vi tilbyr|we provide|our services)[\s:]+(.{40,500})",
-    ]
-
-    for pattern in description_patterns:
-        match = re.search(pattern, text)
-
-        if match:
-            facts["description"] = match.group(1).strip()
-            break
 
     return facts

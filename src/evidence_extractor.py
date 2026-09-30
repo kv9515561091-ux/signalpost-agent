@@ -8,8 +8,8 @@ def extract_page_evidence(
     company_name: str,
 ) -> dict:
     """
-    Fetch a verified company page and extract text surrounding
-    the company-name occurrence as evidence.
+    Fetch a company website and extract evidence around
+    the verified company-name occurrence.
     """
 
     page = fetch_page(url)
@@ -22,19 +22,20 @@ def extract_page_evidence(
 
     if match_position >= 0:
         start = max(0, match_position - 500)
-        end = min(len(content), match_position + len(company_name) + 1500)
+        end = min(
+            len(content),
+            match_position + len(company_name) + 1500,
+        )
         evidence_text = content[start:end]
         company_match = True
     else:
-        evidence_text = content[:2000]
+        evidence_text = ""
         company_match = False
-
-    retrieved_at = datetime.now(timezone.utc).isoformat()
 
     return {
         "source_url": page["url"],
         "page_title": page["title"],
-        "retrieved_at": retrieved_at,
+        "retrieved_at": datetime.now(timezone.utc).isoformat(),
         "company_match": company_match,
         "evidence_text": evidence_text,
     }
