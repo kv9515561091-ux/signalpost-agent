@@ -25,6 +25,7 @@ def build_profile(company_number: str) -> CompanyProfile:
         company_number=data["company_number"],
         company_name=data["company_name"],
         address=data["address"],
+        website=data["website"],
         industry=data["industry"]["beskrivelse"],
         registration_date=data["registration_date"],
         sources=[data["source"]],

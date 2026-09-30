@@ -26,6 +26,7 @@ def get_company(company_number: str) -> dict:
         "registration_date": data.get("registreringsdatoEnhetsregisteret"),
         "industry": data.get("naeringskode1"),
         "status": data.get("konkurs"),
+        "website": data.get("hjemmeside"),
         "source": url,
         "retrieved_at": datetime.now(timezone.utc).isoformat(),
     }
