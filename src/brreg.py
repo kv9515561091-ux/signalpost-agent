@@ -22,7 +22,8 @@ def get_company(company_number: str) -> dict:
     return {
         "company_number": data.get("organisasjonsnummer"),
         "company_name": data.get("navn"),
-        "address": data.get("forretningsadresse"),
+        "address": format_address(data.get("forretningsadresse", {})),
+        "registration_date": data.get("registreringsdatoEnhetsregisteret"),
         "industry": data.get("naeringskode1"),
         "status": data.get("konkurs"),
         "source": url,
