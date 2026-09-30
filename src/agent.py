@@ -12,7 +12,7 @@ class CompanyProfile(BaseModel):
     sources: list[str] = []
 def validate_company_number(company_number: str) -> bool:
     return company_number.isdigit() and len(company_number) == 9
-from src.brreg import get_company
+from src.brreg import format_address, get_company
 
 
 def build_profile(company_number: str) -> CompanyProfile:
@@ -21,7 +21,7 @@ def build_profile(company_number: str) -> CompanyProfile:
     return CompanyProfile(
         company_number=data["company_number"],
         company_name=data["company_name"],
-        address=str(data["address"]),
+        address=format_address(data.get("forretningsadresse", {})),
         industry=data["industry"]["beskrivelse"],
         registration_date=data["registration_date"],
         sources=[data["source"]],
