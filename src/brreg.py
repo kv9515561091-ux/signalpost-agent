@@ -1,4 +1,5 @@
 import requests
+from datetime import datetime, timezone
 
 def format_address(address: dict) -> str:
     street = ", ".join(address.get("adresse", []))
@@ -23,7 +24,7 @@ def get_company(company_number: str) -> dict:
         "company_name": data.get("navn"),
         "address": data.get("forretningsadresse"),
         "industry": data.get("naeringskode1"),
-        "registration_date": data.get("registreringsdatoEnhetsregisteret"),
         "status": data.get("konkurs"),
         "source": url,
+        "retrieved_at": datetime.now(timezone.utc).isoformat(),
     }
