@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 
+from src.freshness import freshness_status
+
 
 @dataclass
 class Evidence:
@@ -18,4 +20,5 @@ class Evidence:
             "retrieved_at": self.retrieved_at,
             "evidence_text": self.evidence_text,
             "confidence": self.confidence,
+            "freshness": freshness_status(self.retrieved_at),
         }
