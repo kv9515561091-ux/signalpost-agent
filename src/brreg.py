@@ -25,7 +25,26 @@ def get_company(company_number: str) -> dict:
         "address": format_address(data.get("forretningsadresse", {})),
         "registration_date": data.get("registreringsdatoEnhetsregisteret"),
         "industry": data.get("naeringskode1"),
+        "phone": data.get("telefon"),
         "website": data.get("hjemmeside"),
+
+        "under_liquidation": data.get("underAvvikling"),
+        "under_forced_liquidation": data.get(
+            "underTvangsavviklingEllerTvangsopplosning"
+        ),
+
+        "registered_business_register": data.get(
+            "registrertIForetaksregisteret"
+        ),
+        "registered_vat_register": data.get(
+            "registrertIMvaregisteret"
+        ),
+        "registered_voluntary_register": data.get(
+            "registrertIFrivillighetsregisteret"
+        ),
+
+        "parent_company_number": data.get("overordnetEnhet"),
+
         "source": url,
         "retrieved_at": datetime.now(timezone.utc).isoformat(),
     }
