@@ -21,11 +21,11 @@ def extract_page_evidence(
     match_position = content_lower.find(company_lower)
 
     if match_position >= 0:
-        start = max(0, match_position - 500)
+        start = max(0, match_position - 200)
         end = min(
-            len(content),
-            match_position + len(company_name) + 1500,
-        )
+        len(content),
+        match_position + len(company_name) + 500,
+     )
         evidence_text = content[start:end]
         company_match = True
     else:
