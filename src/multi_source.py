@@ -83,11 +83,20 @@ def discover_company_sources(
         company_number=company_number,
         website=website,
     )
-
     existing_urls = {
-        source["url"]
+        source.get("url")
         for source in sources
+        if source.get("url")
     }
+
+    if sources:
+        return rank_sources(
+            [
+                source
+                for source in sources
+                if source.get("identity_verified")
+            ]
+        )
 
     queries = build_search_queries(
         company_name=company_name,
