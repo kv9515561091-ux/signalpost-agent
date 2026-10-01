@@ -12,6 +12,11 @@ def process_companies(
     results = []
 
     for company_number in company_numbers:
+        company_number = company_number.strip()
+
+        if not company_number:
+            continue
+
         try:
             profile = build_profile(company_number)
             results.append(profile.model_dump())
@@ -40,3 +45,18 @@ def process_companies(
     )
 
     return results
+
+
+def load_company_numbers(
+    input_file: str = "data/company_numbers.txt",
+) -> list[str]:
+
+    path = Path(input_file)
+
+    return [
+        line.strip()
+        for line in path.read_text(
+            encoding="utf-8"
+        ).splitlines()
+        if line.strip()
+    ]
