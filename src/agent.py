@@ -177,9 +177,57 @@ def build_profile(company_number: str) -> CompanyProfile:
                             confidence=1.0,
                         )
                     )
-
         except Exception:
             pass
+
+    # ADD THE NEW BLOCK HERE
+    brreg_fields = [
+        ("phone", data.get("phone"), "Brreg registered phone number"),
+        (
+            "under_liquidation",
+            data.get("under_liquidation"),
+            "Brreg liquidation status",
+        ),
+        (
+            "under_forced_liquidation",
+            data.get("under_forced_liquidation"),
+            "Brreg forced liquidation status",
+        ),
+        (
+            "registered_business_register",
+            data.get("registered_business_register"),
+            "Brreg business register registration",
+        ),
+        (
+            "registered_vat_register",
+            data.get("registered_vat_register"),
+            "Brreg VAT register registration",
+        ),
+        (
+            "registered_voluntary_register",
+            data.get("registered_voluntary_register"),
+            "Brreg voluntary register registration",
+        ),
+        (
+            "parent_company_number",
+            data.get("parent_company_number"),
+            "Brreg parent company organization number",
+        ),
+    ]
+
+    for field, value, description in brreg_fields:
+        if value is not None:
+            evidence.append(
+                Evidence(
+                    field=field,
+                    value=str(value),
+                    source_url=source_url,
+                    retrieved_at=retrieved_at,
+                    evidence_text=f"{description}: {value}",
+                    confidence=1.0,
+                )
+            )
+
     discovered_sources = discover_company_sources(
         company_name=data["company_name"],
         company_number=str(data["company_number"]),
