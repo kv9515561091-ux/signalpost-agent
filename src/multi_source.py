@@ -121,18 +121,24 @@ def discover_company_sources(
                 )
 
                 sources.append(
-    {
-        "url": url,
-        "title": result["title"],
-        "domain": get_domain(url),
-        "source_type": "search_result",
-        "identity_verified": identity_verified,
-    }
-)
+                    {
+                        "url": url,
+                        "title": result["title"],
+                        "domain": get_domain(url),
+                        "source_type": "search_result",
+                        "identity_verified": identity_verified,
+                    }
+                )
 
                 existing_urls.add(url)
 
         except Exception:
             continue
 
-    return rank_sources(sources)
+    return rank_sources(
+        [
+            source
+            for source in sources
+            if source.get("identity_verified")
+        ]
+    )
