@@ -1,4 +1,5 @@
-from src.identity import verify_website
+from src.identity import verify_website_content
+from src.web_search import fetch_page
 
 
 def discover_sources(
@@ -17,10 +18,18 @@ def discover_sources(
 
     if website:
         try:
-            verification = verify_website(
+            if not website.startswith(
+                ("http://", "https://")
+            ):
+                website = "https://" + website
+
+            page = fetch_page(website)
+
+            verification = verify_website_content(
                 company_name=company_name,
                 company_number=company_number,
                 website=website,
+                page=page,
             )
 
             if verification["verified"]:
@@ -31,6 +40,9 @@ def discover_sources(
                         "domain": verification["domain"],
                         "source_type": "official_company_website",
                         "identity_verified": True,
+                        "page_content": verification[
+                            "page_content"
+                        ],
                     }
                 )
 

@@ -4,10 +4,10 @@ from pydantic import BaseModel, Field
 
 from src.brreg import get_company
 from src.evidence import Evidence
-from src.evidence_extractor import extract_page_evidence
 from src.fact_extractor import extract_facts
 from src.fact_record import FactRecord
 from src.multi_source import discover_company_sources
+
 
 class CompanyProfile(BaseModel):
     company_number: str
@@ -17,6 +17,7 @@ class CompanyProfile(BaseModel):
     industry_code: Optional[str] = None
     industry: Optional[str] = None
     registration_date: Optional[str] = None
+
     phone: Optional[str] = None
     under_liquidation: Optional[bool] = None
     under_forced_liquidation: Optional[bool] = None
@@ -136,53 +137,12 @@ def build_profile(company_number: str) -> CompanyProfile:
             )
         )
 
-    facts = []
-
-    if data.get("website"):
-
-        website = data["website"]
-
-        if not website.startswith(("http://", "https://")):
-            website = "https://" + website
-
-        try:
-            page_evidence = extract_page_evidence(
-                website,
-                data["company_name"],
-            )
-
-            if page_evidence["company_match"]:
-
-                extracted_facts = extract_facts(
-                    page_evidence["evidence_text"],
-                    data["company_name"],
-                )
-
-                for field, value in extracted_facts.items():
-
-                    if value is None:
-                        continue
-
-                    facts.append(
-                        FactRecord(
-                            field=field,
-                            value=str(value),
-                            source_url=page_evidence["source_url"],
-                            retrieved_at=page_evidence[
-                                "retrieved_at"
-                            ],
-                            evidence_text=page_evidence[
-                                "evidence_text"
-                            ],
-                            confidence=1.0,
-                        )
-                    )
-        except Exception:
-            pass
-
-    # ADD THE NEW BLOCK HERE
     brreg_fields = [
-        ("phone", data.get("phone"), "Brreg registered phone number"),
+        (
+            "phone",
+            data.get("phone"),
+            "Brreg registered phone number",
+        ),
         (
             "under_liquidation",
             data.get("under_liquidation"),
@@ -245,6 +205,40 @@ def build_profile(company_number: str) -> CompanyProfile:
             [source_url] + verified_source_urls
         )
     )
+
+    facts = []
+
+    for source in discovered_sources:
+
+        if not source.get("identity_verified"):
+            continue
+
+        page_content = source.get("page_content", "")
+
+        if not page_content:
+            continue
+
+        extracted_facts = extract_facts(
+            page_content,
+            data["company_name"],
+        )
+
+        for field, value in extracted_facts.items():
+
+            if value is None:
+                continue
+
+            facts.append(
+                FactRecord(
+                    field=field,
+                    value=str(value),
+                    source_url=source["url"],
+                    retrieved_at=retrieved_at,
+                    evidence_text=page_content,
+                    confidence=1.0,
+                )
+            )
+
     return CompanyProfile(
         company_number=str(data["company_number"]),
         company_name=data["company_name"],

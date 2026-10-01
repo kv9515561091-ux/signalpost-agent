@@ -23,28 +23,40 @@ def normalize_company_name(name: str) -> str:
     return name
 
 
-def verify_website(
+def verify_website_content(
     company_name: str,
     company_number: str,
     website: str,
+    page: dict,
 ) -> dict:
 
     if not website.startswith(("http://", "https://")):
         website = "https://" + website
 
     parsed = urlparse(website)
-    domain = parsed.netloc.lower().replace("www.", "")
 
-    page = fetch_page(website)
+    domain = (
+        parsed.netloc
+        .lower()
+        .replace("www.", "")
+    )
 
     content = normalize_text(page["content"])
     title = normalize_text(page["title"])
 
-    normalized_name = normalize_company_name(company_name)
+    normalized_name = normalize_company_name(
+        company_name
+    )
 
-    name_match = normalized_name in content or normalized_name in title
+    name_match = (
+        normalized_name in content
+        or normalized_name in title
+    )
 
-    number_match = company_number in content or company_number in title
+    number_match = (
+        company_number in content
+        or company_number in title
+    )
 
     return {
         "verified": name_match or number_match,
@@ -54,4 +66,24 @@ def verify_website(
         "company_number_match": number_match,
         "source_url": page["url"],
         "page_title": page["title"],
+        "page_content": page["content"],
     }
+
+
+def verify_website(
+    company_name: str,
+    company_number: str,
+    website: str,
+) -> dict:
+
+    if not website.startswith(("http://", "https://")):
+        website = "https://" + website
+
+    page = fetch_page(website)
+
+    return verify_website_content(
+        company_name=company_name,
+        company_number=company_number,
+        website=website,
+        page=page,
+    )
