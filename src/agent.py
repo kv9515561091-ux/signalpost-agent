@@ -7,7 +7,7 @@ from src.evidence import Evidence
 from src.evidence_extractor import extract_page_evidence
 from src.fact_extractor import extract_facts
 from src.fact_record import FactRecord
-
+from src.multi_source import discover_company_sources
 
 class CompanyProfile(BaseModel):
     company_number: str
@@ -173,7 +173,23 @@ def build_profile(company_number: str) -> CompanyProfile:
 
         except Exception:
             pass
+    discovered_sources = discover_company_sources(
+        company_name=data["company_name"],
+        company_number=str(data["company_number"]),
+        website=data.get("website"),
+    )
 
+    verified_source_urls = [
+        source["url"]
+        for source in discovered_sources
+        if source.get("identity_verified")
+    ]
+
+    all_sources = list(
+        dict.fromkeys(
+            [source_url] + verified_source_urls
+        )
+    )
     return CompanyProfile(
         company_number=str(data["company_number"]),
         company_name=data["company_name"],
@@ -182,7 +198,7 @@ def build_profile(company_number: str) -> CompanyProfile:
         industry_code=industry_code,
         industry=industry_description,
         registration_date=data["registration_date"],
-        sources=[source_url],
+        sources=all_sources,
         evidence=evidence,
         facts=facts,
     )
