@@ -1,5 +1,6 @@
 import requests
 from datetime import datetime, timezone
+from src.request_tracker import request_tracker
 
 def format_address(address: dict) -> str:
     street = ", ".join(address.get("adresse", []))
@@ -13,7 +14,7 @@ def format_address(address: dict) -> str:
 
 def get_company(company_number: str) -> dict:
     url = f"https://data.brreg.no/enhetsregisteret/api/enheter/{company_number}"
-
+    request_tracker.record()
     response = requests.get(url, timeout=10)
     response.raise_for_status()
 
