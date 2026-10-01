@@ -2,74 +2,117 @@ from urllib.parse import urlparse
 
 from src.public_search import build_search_queries
 from src.search_provider import search_web
-from src.source_discovery import discover_sources
 from src.source_hierarchy import rank_sources
-from src.web_search import fetch_page
+from src.tinyfish_search import search_tinyfish
 
 
 def get_domain(url: str) -> str:
+    """Extract and normalize the domain from a URL."""
     return urlparse(url).netloc.lower().replace("www.", "")
 
 
-def verify_source_identity(
-    url: str,
+def classify_source_type(url: str) -> str:
+    """
+    Classify a discovered source using its domain.
+    """
+
+    domain = get_domain(url)
+
+    if domain == "brreg.no" or domain.endswith(".brreg.no"):
+        return "official_registry"
+
+    if domain.endswith(".gov.no"):
+        return "official_government_source"
+
+    if domain == "regjeringen.no" or domain.endswith(".regjeringen.no"):
+        return "official_government_source"
+
+    if domain.endswith(".kommune.no"):
+        return "official_government_source"
+
+    if domain in {
+        "sikt.no",
+        "utdanning.no",
+    }:
+        return "official_government_source"
+
+    if domain in {
+        "foretaksinfo.no",
+        "byndle.no",
+    }:
+        return "reputable_business_database"
+
+    return "search_result"
+
+
+def verify_search_result_identity(
+    result: dict,
     company_name: str,
     company_number: str,
     official_domain: str | None = None,
 ) -> bool:
-    try:
-        page = fetch_page(url)
+    """
+    Verify company identity using search-result metadata.
 
-        content = " ".join(
-            page["content"].lower().split()
+    Organization numbers are normalized so both:
+
+        983887457
+        983 887 457
+
+    are treated as the same identifier.
+    """
+
+    title = result.get("title", "")
+    url = result.get("url", "")
+    snippet = result.get("snippet", "")
+
+    text = " ".join(
+        [
+            title,
+            url,
+            snippet,
+        ]
+    ).lower()
+
+    # Normalize organization numbers.
+    company_number_normalized = (
+        company_number.lower()
+        .replace(" ", "")
+        .replace("-", "")
+    )
+
+    text_number_normalized = (
+        text
+        .replace(" ", "")
+        .replace("-", "")
+    )
+
+    company_name_lower = company_name.lower()
+
+    # Strongest identity signal:
+    # exact organization number, allowing spaces/hyphens.
+    if company_number_normalized in text_number_normalized:
+        return True
+
+    # Strong identity signal:
+    # exact registered company name.
+    if company_name_lower in text:
+        return True
+
+    # Official registered domain.
+    if official_domain:
+        result_domain = get_domain(url)
+
+        normalized_official = (
+            official_domain
+            .lower()
+            .replace("www.", "")
         )
 
-        domain = get_domain(url)
+        if result_domain == normalized_official:
+            return True
 
-        company_number_lower = company_number.lower()
-        company_name_lower = company_name.lower()
-
-        # Company number is valid only when the
-        # company name appears in the same context.
-        if company_number_lower in content:
-            number_position = content.find(
-                company_number_lower
-            )
-
-            context_start = max(
-                0,
-                number_position - 500,
-            )
-
-            context_end = min(
-                len(content),
-                number_position
-                + len(company_number_lower)
-                + 500,
-            )
-
-            context = content[
-                context_start:context_end
-            ]
-
-            if company_name_lower in context:
-                return True
-
-        # Official company domain is trusted.
-        if official_domain:
-            normalized_official = (
-                official_domain
-                .lower()
-                .replace("www.", "")
-            )
-
-            if domain == normalized_official:
-                return True
-
-        return False
-
-    except Exception:
-        return False
+    return False
 
 
 def discover_company_sources(
@@ -77,77 +120,130 @@ def discover_company_sources(
     company_number: str,
     website: str | None = None,
 ) -> list[dict]:
+    """
+    Discover public company sources.
 
-    sources = discover_sources(
-        company_name=company_name,
-        company_number=company_number,
-        website=website,
-    )
-    existing_urls = {
-        source.get("url")
-        for source in sources
-        if source.get("url")
-    }
+    Request-efficient path:
 
-    if sources:
-        return rank_sources(
-            [
-                source
-                for source in sources
-                if source.get("identity_verified")
-            ]
-        )
+        Brreg
+          ↓
+        TinyFish search
+          ↓
+        Identity verification
+          ↓
+        Source classification
+          ↓
+        Source ranking
+          ↓
+        Verified snippets
+
+    The registered website is NOT fetched here.
+    """
+
+    sources = []
+    existing_urls = set()
 
     queries = build_search_queries(
         company_name=company_name,
         company_number=company_number,
     )
 
-    for query in queries:
-        try:
-            results = search_web(
-                query=query,
-                max_results=5,
+    official_domain = (
+        get_domain(website)
+        if website
+        else None
+    )
+
+    # ---------------------------------------------------------
+    # TinyFish primary search
+    # ---------------------------------------------------------
+    try:
+        results = search_tinyfish(
+            query=queries[0],
+            max_results=5,
+        )
+
+        for result in results:
+
+            url = result.get("url")
+
+            if not url or url in existing_urls:
+                continue
+
+            identity_verified = verify_search_result_identity(
+                result=result,
                 company_name=company_name,
                 company_number=company_number,
+                official_domain=official_domain,
             )
 
-            for result in results:
-                url = result["url"]
+            if not identity_verified:
+                continue
 
-                if not url or url in existing_urls:
-                    continue
+            sources.append(
+                {
+                    "url": url,
+                    "title": result.get("title", ""),
+                    "domain": get_domain(url),
+                    "source_type": classify_source_type(url),
+                    "identity_verified": True,
+                    "snippet": result.get("snippet", ""),
+                }
+            )
 
-                identity_verified = verify_source_identity(
-                    url=url,
-                    company_name=company_name,
-                    company_number=company_number,
-                    official_domain=(
-                        get_domain(website)
-                        if website
-                        else None
-                    ),
-                )
+            existing_urls.add(url)
 
-                sources.append(
-                    {
-                        "url": url,
-                        "title": result["title"],
-                        "domain": get_domain(url),
-                        "source_type": "search_result",
-                        "identity_verified": identity_verified,
-                    }
-                )
+    except Exception:
+        pass
 
-                existing_urls.add(url)
+    # ---------------------------------------------------------
+    # Return TinyFish results if available
+    # ---------------------------------------------------------
+    if sources:
+        return rank_sources(sources)
 
-        except Exception:
-            continue
+    # ---------------------------------------------------------
+    # LangSearch fallback
+    # ---------------------------------------------------------
+    try:
+        results = search_web(
+            query=queries[0],
+            max_results=5,
+            company_name=company_name,
+            company_number=company_number,
+        )
 
-    return rank_sources(
-        [
-            source
-            for source in sources
-            if source.get("identity_verified")
-        ]
-    )
+        for result in results:
+
+            url = result.get("url")
+
+            if not url or url in existing_urls:
+                continue
+
+            identity_verified = verify_search_result_identity(
+                result=result,
+                company_name=company_name,
+                company_number=company_number,
+                official_domain=official_domain,
+            )
+
+            if not identity_verified:
+                continue
+
+            sources.append(
+                {
+                    "url": url,
+                    "title": result.get("title", ""),
+                    "domain": get_domain(url),
+                    "source_type": classify_source_type(url),
+                    "identity_verified": True,
+                    "snippet": result.get("snippet", ""),
+                }
+            )
+
+            existing_urls.add(url)
+
+    except Exception:
+        pass
+
+    return rank_sources(sources)

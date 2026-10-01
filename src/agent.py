@@ -42,6 +42,9 @@ def build_profile(company_number: str) -> CompanyProfile:
             "Company number must contain exactly 9 digits"
         )
 
+    # ---------------------------------------------------------
+    # Primary source: Brreg
+    # ---------------------------------------------------------
     data = get_company(company_number)
 
     source_url = data["source"]
@@ -72,6 +75,9 @@ def build_profile(company_number: str) -> CompanyProfile:
         ),
     ]
 
+    # ---------------------------------------------------------
+    # Address
+    # ---------------------------------------------------------
     if data.get("address"):
         evidence.append(
             Evidence(
@@ -87,6 +93,9 @@ def build_profile(company_number: str) -> CompanyProfile:
             )
         )
 
+    # ---------------------------------------------------------
+    # Registration date
+    # ---------------------------------------------------------
     if data.get("registration_date"):
         evidence.append(
             Evidence(
@@ -102,6 +111,9 @@ def build_profile(company_number: str) -> CompanyProfile:
             )
         )
 
+    # ---------------------------------------------------------
+    # Industry
+    # ---------------------------------------------------------
     industry = data.get("industry") or {}
 
     industry_code = industry.get("kode")
@@ -122,6 +134,9 @@ def build_profile(company_number: str) -> CompanyProfile:
             )
         )
 
+    # ---------------------------------------------------------
+    # Website
+    # ---------------------------------------------------------
     if data.get("website"):
         evidence.append(
             Evidence(
@@ -137,6 +152,9 @@ def build_profile(company_number: str) -> CompanyProfile:
             )
         )
 
+    # ---------------------------------------------------------
+    # Other Brreg fields
+    # ---------------------------------------------------------
     brreg_fields = [
         (
             "phone",
@@ -176,6 +194,7 @@ def build_profile(company_number: str) -> CompanyProfile:
     ]
 
     for field, value, description in brreg_fields:
+
         if value is not None:
             evidence.append(
                 Evidence(
@@ -188,6 +207,9 @@ def build_profile(company_number: str) -> CompanyProfile:
                 )
             )
 
+    # ---------------------------------------------------------
+    # Secondary source discovery
+    # ---------------------------------------------------------
     discovered_sources = discover_company_sources(
         company_name=data["company_name"],
         company_number=str(data["company_number"]),
@@ -206,20 +228,45 @@ def build_profile(company_number: str) -> CompanyProfile:
         )
     )
 
+    # ---------------------------------------------------------
+    # Secondary fact extraction
+    #
+    # Collect facts from all verified snippets.
+    # Only one value is retained for each field.
+    # Higher-ranked sources are processed first.
+    # ---------------------------------------------------------
     facts = []
+    seen_fields = set()
+
+    target_company_number = str(
+        data["company_number"]
+    ).lower()
+
+    target_company_name = data["company_name"].lower()
 
     for source in discovered_sources:
 
         if not source.get("identity_verified"):
             continue
 
-        page_content = source.get("page_content", "")
+        snippet = source.get("snippet", "").strip()
 
-        if not page_content:
+        if not snippet:
+            continue
+
+        snippet_lower = snippet.lower()
+
+        # Require identity evidence in the SAME snippet.
+        snippet_identifies_company = (
+            target_company_number in snippet_lower
+            or target_company_name in snippet_lower
+        )
+
+        if not snippet_identifies_company:
             continue
 
         extracted_facts = extract_facts(
-            page_content,
+            snippet,
             data["company_name"],
         )
 
@@ -228,17 +275,27 @@ def build_profile(company_number: str) -> CompanyProfile:
             if value is None:
                 continue
 
+            # Keep the first value encountered.
+            # Sources are already ranked by priority.
+            if field in seen_fields:
+                continue
+
+            seen_fields.add(field)
+
             facts.append(
                 FactRecord(
                     field=field,
                     value=str(value),
                     source_url=source["url"],
                     retrieved_at=retrieved_at,
-                    evidence_text=page_content,
-                    confidence=1.0,
+                    evidence_text=snippet,
+                    confidence=0.90,
                 )
             )
 
+    # ---------------------------------------------------------
+    # Final company profile
+    # ---------------------------------------------------------
     return CompanyProfile(
         company_number=str(data["company_number"]),
         company_name=data["company_name"],
