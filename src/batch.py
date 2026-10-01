@@ -1,3 +1,4 @@
+import time
 import json
 from pathlib import Path
 
@@ -12,6 +13,8 @@ def process_companies(
     results = []
 
     for company_number in company_numbers:
+        time.sleep(0.5)
+
         company_number = company_number.strip()
 
         if not company_number:
