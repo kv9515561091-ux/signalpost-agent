@@ -17,6 +17,13 @@ class CompanyProfile(BaseModel):
     industry_code: Optional[str] = None
     industry: Optional[str] = None
     registration_date: Optional[str] = None
+    phone: Optional[str] = None
+    under_liquidation: Optional[bool] = None
+    under_forced_liquidation: Optional[bool] = None
+    registered_business_register: Optional[bool] = None
+    registered_vat_register: Optional[bool] = None
+    registered_voluntary_register: Optional[bool] = None
+    parent_company_number: Optional[str] = None
 
     sources: list[str] = Field(default_factory=list)
     evidence: list[Evidence] = Field(default_factory=list)
@@ -198,6 +205,23 @@ def build_profile(company_number: str) -> CompanyProfile:
         industry_code=industry_code,
         industry=industry_description,
         registration_date=data["registration_date"],
+        phone=data.get("phone"),
+        under_liquidation=data.get("under_liquidation"),
+        under_forced_liquidation=data.get(
+            "under_forced_liquidation"
+        ),
+        registered_business_register=data.get(
+            "registered_business_register"
+        ),
+        registered_vat_register=data.get(
+            "registered_vat_register"
+        ),
+        registered_voluntary_register=data.get(
+            "registered_voluntary_register"
+        ),
+        parent_company_number=data.get(
+            "parent_company_number"
+        ),
         sources=all_sources,
         evidence=evidence,
         facts=facts,
