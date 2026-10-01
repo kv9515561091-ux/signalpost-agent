@@ -18,9 +18,11 @@ def classify_source_type(url: str) -> str:
 
     domain = get_domain(url)
 
+    # Norwegian business registry
     if domain == "brreg.no" or domain.endswith(".brreg.no"):
         return "official_registry"
 
+    # Norwegian government sources
     if domain.endswith(".gov.no"):
         return "official_government_source"
 
@@ -30,19 +32,57 @@ def classify_source_type(url: str) -> str:
     if domain.endswith(".kommune.no"):
         return "official_government_source"
 
+    # Selected public-sector sources
     if domain in {
         "sikt.no",
         "utdanning.no",
     }:
         return "official_government_source"
 
+    # Reputable company-information databases
     if domain in {
         "foretaksinfo.no",
         "byndle.no",
+        "proff.no",
+        "firmadatabasen.no",
+        "firmabasen.no",
+        "forvalt.no",
+        "norgelei.no",
+        "vexter.no",
+        "1850.no",
     }:
         return "reputable_business_database"
 
     return "search_result"
+
+
+def is_negative_result(result: dict) -> bool:
+    """
+    Detect search results that explicitly indicate
+    that a company was not found or does not exist.
+    """
+
+    text = " ".join(
+        [
+            result.get("title", ""),
+            result.get("snippet", ""),
+        ]
+    ).lower()
+
+    negative_phrases = [
+        "foretaket finst ikkje",
+        "føretaket finst ikkje",
+        "finn ikkje føretak",
+        "finnes ikke",
+        "not found",
+        "does not exist",
+        "no company found",
+    ]
+
+    return any(
+        phrase in text
+        for phrase in negative_phrases
+    )
 
 
 def verify_search_result_identity(
@@ -129,20 +169,26 @@ def discover_company_sources(
           ↓
         TinyFish search
           ↓
+        Negative-result filtering
+          ↓
         Identity verification
           ↓
         Source classification
           ↓
         Source ranking
           ↓
-        Verified snippets
+        Verified source snippets
 
     The registered website is NOT fetched here.
+    This avoids an additional HTTP request per company.
     """
 
     sources = []
     existing_urls = set()
 
+    # ---------------------------------------------------------
+    # Build targeted search query
+    # ---------------------------------------------------------
     queries = build_search_queries(
         company_name=company_name,
         company_number=company_number,
@@ -168,6 +214,10 @@ def discover_company_sources(
             url = result.get("url")
 
             if not url or url in existing_urls:
+                continue
+
+            # Reject explicit negative lookup results.
+            if is_negative_result(result):
                 continue
 
             identity_verified = verify_search_result_identity(
@@ -218,6 +268,10 @@ def discover_company_sources(
             url = result.get("url")
 
             if not url or url in existing_urls:
+                continue
+
+            # Reject explicit negative lookup results.
+            if is_negative_result(result):
                 continue
 
             identity_verified = verify_search_result_identity(
