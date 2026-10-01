@@ -1,5 +1,3 @@
-from urllib.parse import urlparse
-
 from src.identity import verify_website
 
 
@@ -12,6 +10,7 @@ def discover_sources(
     Discover and validate public sources for a company.
 
     Brreg remains the primary identity anchor.
+    Only identity-verified sources are returned.
     """
 
     sources = []
@@ -30,7 +29,7 @@ def discover_sources(
                         "url": verification["source_url"],
                         "title": verification["page_title"],
                         "domain": verification["domain"],
-                        "source_type": "official_website",
+                        "source_type": "official_company_website",
                         "identity_verified": True,
                     }
                 )
