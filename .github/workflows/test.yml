@@ -1,0 +1,77 @@
+name: test
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run test suite
+        # The suite never touches the network. If it starts doing so, it
+        # will fail here rather than passing locally against live
+        # registries and hiding a dependency on them.
+        run: python -m unittest discover -s tests -v
+
+      - name: Verify the package imports without optional extras
+        # The LLM path must stay genuinely optional.
+        run: |
+          python -c "
+          from src import agent, brreg, roles, financials, identity, sources
+          from src import explain, extract, page, cache, conflicts
+          from src.llm import is_available
+          assert is_available() is False, 'anthropic should not be installed'
+          print('core imports OK, LLM correctly absent')
+          "
+
+      - name: Verify encoding integrity
+        # Norwegian characters are the whole point; a regression here is
+        # invisible in review but destroys the output.
+        run: |
+          python -c "
+          from pathlib import Path
+          import ast
+          for f in list(Path('src').glob('*.py')) + list(Path('tests').glob('*.py')):
+              raw = f.read_bytes()
+              assert not raw.startswith(b'\xef\xbb\xbf'), f'{f} has a BOM'
+              assert b'\r' not in raw, f'{f} has CR line endings'
+              text = raw.decode('utf-8')
+              assert '\ufffd' not in text, f'{f} contains a replacement char'
+              ast.parse(text)
+          print('encoding clean')
+          "
+
+      - name: Verify the CLI parses and reports errors correctly
+        run: |
+          python -m src.agent --help > /dev/null
+          # A malformed number must be rejected before any network call.
+          if python -m src.agent 12345678; then
+            echo "expected exit code 2 for an invalid organization number"
+            exit 1
+          fi
+          python -c "
+          from src.__main__ import _force_utf8_output
+          _force_utf8_output()
+          import sys
+          assert sys.stdout.encoding.lower().replace('-','') == 'utf8'
+          print('CLI enforces UTF-8 output')
+          "

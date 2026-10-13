@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from src.brreg import ENHETSREGISTERET_BASE
-from src.http import fetch_json
+from src.cache import cached_json
 from src.orgnumber import validate
 
 REQUEST_TIMEOUT = 20
@@ -127,7 +127,8 @@ def get_roles(company_number: str) -> dict[str, Any]:
     # fetch_json retries once; a persistent failure degrades to an empty
     # result that records why, rather than discarding the profile.
     try:
-        data = fetch_json(url, timeout=REQUEST_TIMEOUT, accept_missing=True)
+        body, meta = cached_json(url, accept_missing=True)
+        data = body or {}
     except Exception as exc:  # noqa: BLE001
         return _empty(url, retrieved_at, f"{type(exc).__name__}: {exc}")
 

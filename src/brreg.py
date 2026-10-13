@@ -15,7 +15,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from src.http import NotFound, fetch_json
+from src.cache import cached_json
+from src.http import NotFound
 from src.orgnumber import validate
 
 ENHETSREGISTERET_BASE = "https://data.brreg.no/enhetsregisteret/api"
@@ -25,6 +26,12 @@ REQUEST_TIMEOUT = 20
 
 class CompanyNotFound(NotFound):
     """The org number is well-formed but has no record in Enhetsregisteret."""
+
+
+# How the most recent identity fetch was served. Lets the caller record
+# that a profile came from cache, or was served stale, instead of
+# presenting either as a fresh read.
+LAST_FETCH_META: dict[str, Any] = {}
 
 
 def _iso_now() -> str:
@@ -97,7 +104,9 @@ def fetch_raw(org_number: str) -> dict[str, Any]:
     yielding an empty record.
     """
     org_number = validate(org_number)
-    return fetch_json(_entity_url(org_number), timeout=REQUEST_TIMEOUT)
+    body, meta = cached_json(_entity_url(org_number))
+    LAST_FETCH_META.update(meta)
+    return body
 
 
 def get_company(company_number: str) -> dict[str, Any]:
@@ -200,5 +209,8 @@ def get_company(company_number: str) -> dict[str, Any]:
         ),
 
         "source": _entity_url(org_number),
-        "retrieved_at": _iso_now(),
+        # When the body actually came from the origin, not from the cache.
+        "retrieved_at": LAST_FETCH_META.get("retrieved_at") or _iso_now(),
+        "from_cache": bool(LAST_FETCH_META.get("cached")),
+        "stale": bool(LAST_FETCH_META.get("stale")),
     }

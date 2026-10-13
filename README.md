@@ -27,8 +27,9 @@ python -m src.agent 989061593 --narrate            # + written explanation
 python -m src.agent 989061593 --web                # + verified public sources
 python -m src.agent 989061593 --extract --narrate  # everything
 python -m src.agent 989061593 --json -v            # raw profile + provenance
+python -m src.agent --clear-cache                  # drop cached responses
 
-python -m unittest discover -s tests               # 175 tests
+python -m unittest discover -s tests               # 188 tests
 python run_batch.py                                # batch over data/company_numbers.txt
 ```
 
@@ -40,6 +41,21 @@ export ANTHROPIC_API_KEY=sk-ant-...
 ```
 
 Without it the agent runs unchanged — see [Optional LLM](#optional-llm).
+
+### Caching
+
+Registry responses are cached under `data/cache/` (gitignored) for six
+hours, so repeat runs cost nothing:
+
+```
+COLD: Cache: 0 hit(s), 3 written | Requests used: 3/2000
+WARM: Cache: 3 hit(s), 0 written | Requests used: 0/2000
+```
+
+A cache entry past its time-to-live is **not** silently reused. It is
+served only when revalidation fails, and the profile then carries
+`served_stale: true` plus a retrieval gap saying so. A 404 is never
+replaced by a stale body — "no such record" is the current truth.
 
 ---
 
@@ -167,12 +183,13 @@ src/
   freshness.py     as_of / reporting-period semantics
   evidence.py      Evidence and FactRecord models
   http.py          retrying fetch, streamed size-capped bodies
+  cache.py         TTL disk cache with honest stale handling
   text.py          Norwegian-aware text folding
   batch.py         batch runner over a list of org numbers
   tinyfish_search.py  search provider adapter
   request_tracker.py  outbound request budget
   __main__.py      CLI
-tests/             175 tests, no network required
+tests/             188 tests, no network required
 ```
 
 Tests run on the standard library alone — `python -m unittest discover -s

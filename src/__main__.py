@@ -15,6 +15,7 @@ import json
 import sys
 
 from src.agent import build_profile
+from src.cache import cache
 from src.brreg import CompanyNotFound
 from src.http import NotFound
 from src.orgnumber import InvalidCompanyNumber
@@ -188,6 +189,15 @@ def render(profile, *, verbose: bool = False) -> str:
         lines.append(f"{index}. {source}")
 
     lines.append("")
+    stats = cache.stats()
+    if stats["hits"] or stats["writes"]:
+        lines.append(
+            f"Cache: {stats['hits']} hit(s), {stats['writes']} written"
+        )
+    if profile.retrieved_from_cache:
+        lines.append(
+            "Note: identity was served from the local cache for this run."
+        )
     lines.append(
         f"Requests used: {request_tracker.count}/{request_tracker.limit}"
     )
@@ -226,6 +236,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "company_number",
+        nargs="?",
         help="9-digit Norwegian organization number, e.g. 989061593",
     )
     parser.add_argument(
@@ -258,8 +269,24 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "-v", "--verbose", action="store_true", help="Show full provenance."
     )
+    parser.add_argument(
+        "--clear-cache",
+        action="store_true",
+        help="Delete cached registry responses and exit.",
+    )
 
     args = parser.parse_args(argv)
+
+    if args.clear_cache:
+        removed = cache.clear()
+        print(f"Removed {removed} cached response(s).")
+        return 0
+
+    if not args.company_number:
+        parser.error(
+            "an organization number is required "
+            "(or use --clear-cache)"
+        )
 
     try:
         profile = build_profile(

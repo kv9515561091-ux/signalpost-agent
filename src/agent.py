@@ -185,6 +185,12 @@ class CompanyProfile(BaseModel):
     # reviewer can see what was offered and why it was not published.
     extraction_rejected: list[dict[str, Any]] = Field(default_factory=list)
     explanation: dict[str, Any] | None = None
+    # True when the identity record was served from the local cache
+    # rather than read from Brreg during this run.
+    retrieved_from_cache: bool = False
+    # True when a cached record past its TTL was served because
+    # revalidation failed. The profile is usable but knowingly stale.
+    served_stale: bool = False
     # Stages that could not be retrieved. An empty profile section that
     # the caller might otherwise mistake for "the company has none of
     # these" is recorded here explicitly.
@@ -667,6 +673,12 @@ def build_profile(
     ]
     retrieval_errors = [e for e in retrieval_errors if e]
 
+    if company.get("stale"):
+        retrieval_errors.append(
+            "identity record served from cache past its time-to-live "
+            "because Brreg could not be reached"
+        )
+
     industry = company.get("industry") or {}
 
     sources: list[str] = list(
@@ -725,6 +737,8 @@ def build_profile(
         sources=sources,
         evidence=evidence,
         retrieval_errors=retrieval_errors,
+        retrieved_from_cache=bool(company.get("from_cache")),
+        served_stale=bool(company.get("stale")),
         retrieved_at=company["retrieved_at"],
     )
 

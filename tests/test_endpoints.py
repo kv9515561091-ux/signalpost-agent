@@ -17,6 +17,8 @@ from src.brreg import ENHETSREGISTERET_BASE, _entity_url
 from src.financials import REGNSKAPSREGISTERET_BASE, _accounts_url
 from src.roles import _roles_url
 
+from support import CacheTestCase
+
 ORG = "989061593"
 
 EXPECTED_ENTITY = (
@@ -52,7 +54,7 @@ class UrlTests(unittest.TestCase):
         )
 
 
-class RolesRequestTests(unittest.TestCase):
+class RolesRequestTests(CacheTestCase):
     """A 404 must be reported, not silently rendered as 'no management'."""
 
     # The HTTP call lives in src.http; roles.py delegates to it. Patching

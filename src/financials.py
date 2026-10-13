@@ -24,7 +24,7 @@ from typing import Any
 
 import requests
 
-from src.http import fetch_json
+from src.cache import cached_json
 from src.orgnumber import validate
 
 REGNSKAPSREGISTERET_BASE = "https://data.brreg.no/regnskapsregisteret/regnskap"
@@ -68,11 +68,11 @@ def _fetch_accounts(org_number: str) -> list[dict[str, Any]]:
     # Entities with no filed accounts (government bodies, many small sole
     # proprietorships) return 404 rather than an empty array. Absence of
     # filings is a legitimate, reportable state — not an error.
-    data = fetch_json(
+    body, _meta = cached_json(
         _accounts_url(org_number),
-        timeout=REQUEST_TIMEOUT,
         accept_missing=True,
     )
+    data = body
 
     if data is None:
         return []
