@@ -202,7 +202,12 @@ class ExtractPipelineTests(unittest.TestCase):
         with patch("src.extract.llm.is_available", return_value=True):
             with patch(
                 "src.extract.llm.complete_json",
-                return_value=llm.LLMResult(data=payload, model="m", stop_reason="end_turn"),
+                return_value=llm.LLMResult(
+                    data=payload,
+                    model="m",
+                    provider="anthropic",
+                    finish_reason="end_turn",
+                ),
             ):
                 return extract_from_page(
                     page_text=PAGE,

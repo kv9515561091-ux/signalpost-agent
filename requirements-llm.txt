@@ -1,18 +1,29 @@
 # Signalpost Agent — optional LLM extras.
 #
-# Install alongside requirements.txt only if you want LLM-backed fact
-# extraction and narrative explanation:
+# NOT REQUIRED for either supported provider.
 #
-#     pip install -r requirements-llm.txt
+#   Claude         pip install anthropic
+#   NVIDIA / any   nothing to install — the agent speaks the Chat
+#                  Completions shape directly over HTTP, which keeps the
+#                  runtime dependency-free on that path.
 #
-# Then set an API key:
+# Configure exactly one provider in .env:
 #
 #     ANTHROPIC_API_KEY=sk-ant-...
+#     NVIDIA_API_KEY=nvapi-...
 #
-# Without these, the agent runs unchanged. Extraction is skipped and the
+# An Anthropic key wins if both are present. LLM_PROVIDER overrides the
+# guess and accepts: anthropic | nvidia | none.
+#
+# NVIDIA settings, all optional:
+#     NVIDIA_MODEL       default nvidia/nemotron-3-super-120b-a12b
+#     NVIDIA_BASE_URL    default https://integrate.api.nvidia.com/v1
+#     NVIDIA_THINKING    set true to leave the model's reasoning on
+#
+# Without any key the agent runs unchanged: extraction is skipped and the
 # explanation falls back to a deterministic summary built from the
-# verified record. Nothing about the agent's correctness depends on the
-# LLM: every extracted fact must quote its source verbatim or it is
-# discarded.
+# verified record. Nothing about the agent's correctness depends on a
+# model — every extracted fact must quote its source verbatim, or it is
+# discarded, whichever provider produced it.
 
 anthropic>=1.13.0

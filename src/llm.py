@@ -1,19 +1,27 @@
 """
-Optional Claude client.
+LLM access, provider-agnostic.
 
 The agent's correctness never depends on this module. Everything it
 produces is either verifiable against a source the registry already
-confirmed, or omitted. That property is what allows the LLM to be wired
+confirmed, or omitted. That property is what allows an LLM to be wired
 in without making the agent's guarantees conditional on a network call
 to a paid API succeeding.
 
-Consequences of that policy, enforced here:
+Two backends are supported:
 
-* No credentials is a normal state, not an error. Every entry point has
-  a caller-supplied fallback.
-* The SDK is imported lazily so the package runs without it installed.
-* A refusal or a truncated response is reported, never silently parsed
-  into whatever partial JSON happened to arrive.
+``anthropic``           Claude via the official SDK, with
+                        ``output_config.format`` constraining generation
+                        to the requested schema.
+``openai_compatible``   Any Chat Completions endpoint, including NVIDIA
+                        NIM. Constrained decoding is not guaranteed
+                        there, so the payload is parsed defensively.
+
+Selection is automatic: an Anthropic key wins if both are present, and
+``LLM_PROVIDER`` overrides the guess.
+
+Neither backend is trusted to decide what is true. Quoted evidence is
+checked against the fetched page by :mod:`src.extract`, which is our
+code and runs identically whichever provider produced the text.
 """
 
 from __future__ import annotations
@@ -34,25 +42,22 @@ try:
 except ImportError:  # pragma: no cover - dotenv is a runtime dependency
     pass
 
-MODEL = "claude-opus-5"
+ANTHROPIC_MODEL = "claude-opus-5"
 
 DEFAULT_MAX_TOKENS = 8_000
 DEFAULT_EFFORT = "high"
 
-# Every JSON schema object sent to the API must set this to false.
-SCHEMA_ENVELOPE_KEY = "additionalProperties"
-
 
 class LLMUnavailable(RuntimeError):
-    """The SDK is not installed, or no credentials are configured."""
+    """No backend is configured or usable."""
 
 
 class LLMRefused(RuntimeError):
-    """The model declined the request."""
+    """The provider declined or rejected the request."""
 
 
 class LLMTruncated(RuntimeError):
-    """The response hit max_tokens and may be incomplete JSON."""
+    """The response hit a token limit and may be incomplete."""
 
 
 class LLMCallFailed(RuntimeError):
@@ -61,113 +66,62 @@ class LLMCallFailed(RuntimeError):
 
 @dataclass
 class LLMResult:
-    """A successful completion."""
+    """A successful completion.
+
+    Token counts are retained so a caller can report what a paid API
+    call cost, which matters once extraction is running in a batch.
+    """
 
     data: Any
     model: str
-    stop_reason: str
+    provider: str
+    finish_reason: str
     input_tokens: int | None = None
     output_tokens: int | None = None
 
+    @property
+    def total_tokens(self) -> int | None:
+        if self.input_tokens is None and self.output_tokens is None:
+            return None
+        return (self.input_tokens or 0) + (self.output_tokens or 0)
 
-def _sdk():
-    """Import the Anthropic SDK lazily, or raise :class:`LLMUnavailable`."""
+
+def _anthropic_sdk():
     try:
         import anthropic
     except ImportError as exc:  # pragma: no cover - environment dependent
         raise LLMUnavailable(
-            "The 'anthropic' package is not installed. "
-            "Install it with: pip install -r requirements-llm.txt"
+            "The 'anthropic' package is not installed. Install it with: "
+            "pip install -r requirements-llm.txt, or set NVIDIA_API_KEY "
+            "to use an OpenAI-compatible provider instead."
         ) from exc
     return anthropic
 
 
-def is_available() -> bool:
-    """Whether a real Claude call could be made right now."""
+# ---------------------------------------------------------------- Anthropic
+def _anthropic_available() -> bool:
     try:
-        _sdk()
+        _anthropic_sdk()
     except LLMUnavailable:
         return False
-
-    # The SDK also resolves credentials from an on-disk profile, so an
-    # unset env var is not conclusive on its own. Constructing the client
-    # is the only reliable check short of making a request.
     try:
-        _sdk().Anthropic()
+        _anthropic_sdk().Anthropic()
         return True
-    except Exception:  # noqa: BLE001 - any failure means "not usable"
+    except Exception:  # noqa: BLE001
         return False
 
 
-def unavailable_reason() -> str | None:
-    """Why the LLM is unusable, or ``None`` if it is usable."""
-    try:
-        _sdk()
-    except LLMUnavailable as exc:
-        return str(exc)
-
-    if not (
-        os.getenv("ANTHROPIC_API_KEY")
-        or os.getenv("ANTHROPIC_AUTH_TOKEN")
-        or os.getenv("CLAUDE_CODE_OAUTH_TOKEN")
-    ):
-        # No env credential and no SDK-constructible default client.
-        try:
-            _sdk().Anthropic()
-        except Exception:  # noqa: BLE001
-            return (
-                "No Anthropic credentials found. Set ANTHROPIC_API_KEY "
-                "to enable LLM extraction and explanation."
-            )
-    return None
-
-
-def _client():
-    return _sdk().Anthropic()
-
-
-def _text_of(response: Any) -> str:
-    return next(
-        (block.text for block in response.content if block.type == "text"),
-        "",
-    )
-
-
-def _usage(response: Any) -> tuple[int | None, int | None]:
-    usage = getattr(response, "usage", None)
-    if usage is None:
-        return None, None
-    return (
-        getattr(usage, "input_tokens", None),
-        getattr(usage, "output_tokens", None),
-    )
-
-
-def complete_json(
+def _anthropic_complete_json(
     schema: dict[str, Any],
     *,
     system: str,
     user: str,
-    max_tokens: int = DEFAULT_MAX_TOKENS,
-    effort: str = DEFAULT_EFFORT,
+    max_tokens: int,
+    effort: str,
 ) -> LLMResult:
-    """Ask Claude for JSON conforming to ``schema``.
-
-    Uses ``output_config.format``, which constrains generation to the
-    schema rather than merely asking for JSON and hoping.
-
-    Raises:
-        LLMUnavailable: No SDK or credentials.
-        LLMRefused: ``stop_reason`` was ``refusal``.
-        LLMTruncated: ``stop_reason`` was ``max_tokens``.
-        LLMCallFailed: Transport, auth or rate-limit failure, or a
-            response that was not valid JSON.
-    """
-    client = _client()
-
     try:
-        response = client.messages.create(
-            model=MODEL,
+        response = _anthropic_sdk().Anthropic().messages.create(
+            model=ANTHROPIC_MODEL,
             max_tokens=max_tokens,
             system=system,
             thinking={"type": "adaptive"},
@@ -177,57 +131,49 @@ def complete_json(
             },
             messages=[{"role": "user", "content": user}],
         )
-    except Exception as exc:  # noqa: BLE001 - normalise SDK errors
+    except Exception as exc:  # noqa: BLE001
         raise LLMCallFailed(f"{type(exc).__name__}: {exc}") from exc
 
     stop_reason = getattr(response, "stop_reason", None)
 
     if stop_reason == "refusal":
-        details = getattr(response, "stop_details", None)
-        category = getattr(details, "category", None)
-        raise LLMRefused(f"model declined the request ({category})")
-
+        raise LLMRefused("model declined the request")
     if stop_reason == "max_tokens":
-        raise LLMTruncated(
-            "response hit max_tokens; increase the limit or shorten input"
-        )
+        raise LLMTruncated("response hit max_tokens; output may be incomplete")
 
-    raw = _text_of(response)
-    if not raw:
+    text = next(
+        (b.text for b in response.content if b.type == "text"), ""
+    )
+    if not text:
         raise LLMCallFailed("model returned no text content")
 
     try:
-        data = json.loads(raw)
+        data = json.loads(text)
     except json.JSONDecodeError as exc:
         raise LLMCallFailed(f"response was not valid JSON: {exc}") from exc
 
-    input_tokens, output_tokens = _usage(response)
+    usage = getattr(response, "usage", None)
 
     return LLMResult(
         data=data,
-        model=MODEL,
-        stop_reason=stop_reason or "unknown",
-        input_tokens=input_tokens,
-        output_tokens=output_tokens,
+        model=ANTHROPIC_MODEL,
+        provider="anthropic",
+        finish_reason=stop_reason or "unknown",
+        input_tokens=getattr(usage, "input_tokens", None),
+        output_tokens=getattr(usage, "output_tokens", None),
     )
 
 
-def complete_text(
+def _anthropic_complete_text(
     *,
     system: str,
     user: str,
-    max_tokens: int = DEFAULT_MAX_TOKENS,
-    effort: str = DEFAULT_EFFORT,
+    max_tokens: int,
+    effort: str,
 ) -> str:
-    """Ask Claude for prose, with no schema constraint.
-
-    Raises the same exceptions as :func:`complete_json`.
-    """
-    client = _client()
-
     try:
-        response = client.messages.create(
-            model=MODEL,
+        response = _anthropic_sdk().Anthropic().messages.create(
+            model=ANTHROPIC_MODEL,
             max_tokens=max_tokens,
             system=system,
             thinking={"type": "adaptive"},
@@ -243,7 +189,159 @@ def complete_text(
     if stop_reason == "max_tokens":
         raise LLMTruncated("response hit max_tokens")
 
-    text = _text_of(response)
+    text = next(
+        (b.text for b in response.content if b.type == "text"), ""
+    )
     if not text:
         raise LLMCallFailed("model returned no text content")
     return text
+
+
+# ------------------------------------------------------------------ facade
+def _selected_provider() -> str | None:
+    """Which backend to use, or ``None`` when none is configured."""
+    override = (os.getenv("LLM_PROVIDER") or "").strip().lower()
+
+    if override in ("anthropic", "claude"):
+        return "anthropic" if _anthropic_available() else None
+    if override in ("nvidia", "openai", "openai_compatible"):
+        return "openai_compatible" if _openai_backend() else None
+    if override in ("none", "off", "disabled"):
+        return None
+
+    # Auto: Anthropic wins when configured, since its schema guarantee is
+    # the stronger of the two.
+    if _anthropic_available():
+        return "anthropic"
+    if _openai_backend() is not None:
+        return "openai_compatible"
+    return None
+
+
+def _openai_backend():
+    from src.llm_openai import backend_from_env
+
+    return backend_from_env()
+
+
+def provider_name() -> str | None:
+    """Name of the active backend, or ``None`` if unavailable."""
+    return _selected_provider()
+
+
+def is_available() -> bool:
+    """Whether a real model call could be made right now."""
+    return _selected_provider() is not None
+
+
+def unavailable_reason() -> str | None:
+    """Why no backend is usable, or ``None`` if one is."""
+    if is_available():
+        return None
+
+    override = (os.getenv("LLM_PROVIDER") or "").strip().lower()
+    if override in ("none", "off", "disabled"):
+        return "LLM disabled by LLM_PROVIDER"
+
+    if os.getenv("ANTHROPIC_API_KEY"):
+        return (
+            "ANTHROPIC_API_KEY is set but the anthropic package is not "
+            "installed. Run: pip install -r requirements-llm.txt"
+        )
+    if os.getenv("NVIDIA_API_KEY"):
+        return "NVIDIA_API_KEY is set but the endpoint rejected a test call"
+
+    return (
+        "No LLM configured. Set ANTHROPIC_API_KEY or NVIDIA_API_KEY in .env "
+        "to enable fact extraction and narrative explanation."
+    )
+
+
+def describe() -> str:
+    """One-line description of the active backend, for diagnostics."""
+    provider = _selected_provider()
+    if provider == "anthropic":
+        return f"anthropic:{ANTHROPIC_MODEL}"
+    if provider == "openai_compatible":
+        backend = _openai_backend()
+        return backend.describe() if backend else "openai_compatible"
+    return "none"
+
+
+def complete_json(
+    schema: dict[str, Any],
+    *,
+    system: str,
+    user: str,
+    max_tokens: int = DEFAULT_MAX_TOKENS,
+    effort: str = DEFAULT_EFFORT,
+) -> LLMResult:
+    """Return JSON matching ``schema`` from whichever backend is active."""
+    provider = _selected_provider()
+
+    if provider == "anthropic":
+        return _anthropic_complete_json(
+            schema, system=system, user=user,
+            max_tokens=max_tokens, effort=effort,
+        )
+
+    if provider == "openai_compatible":
+        backend = _openai_backend()
+        try:
+            data = backend.complete_json(
+                schema, system=system, user=user, max_tokens=max_tokens
+            )
+            last_usage = backend.last_usage
+        except Exception as exc:  # noqa: BLE001
+            raise _translate(exc) from exc
+
+        return LLMResult(
+            data=data,
+            model=backend.model,
+            provider="openai_compatible",
+            finish_reason="stop",
+            input_tokens=last_usage.get("prompt_tokens"),
+            output_tokens=last_usage.get("completion_tokens"),
+        )
+
+    raise LLMUnavailable(unavailable_reason() or "no LLM backend configured")
+
+
+def complete_text(
+    *,
+    system: str,
+    user: str,
+    max_tokens: int = DEFAULT_MAX_TOKENS,
+    effort: str = DEFAULT_EFFORT,
+) -> str:
+    """Return prose from whichever backend is active."""
+    provider = _selected_provider()
+
+    if provider == "anthropic":
+        return _anthropic_complete_text(
+            system=system, user=user, max_tokens=max_tokens, effort=effort
+        )
+
+    if provider == "openai_compatible":
+        backend = _openai_backend()
+        try:
+            return backend.complete_text(
+                system=system, user=user, max_tokens=max_tokens
+            )
+        except Exception as exc:  # noqa: BLE001
+            raise _translate(exc) from exc
+
+    raise LLMUnavailable(unavailable_reason() or "no LLM backend configured")
+
+
+def _translate(exc: Exception) -> Exception:
+    """Map backend-specific exceptions onto the shared hierarchy."""
+    from src.llm_openai import CallFailed, Refused, Truncated
+
+    if isinstance(exc, Refused):
+        return LLMRefused(str(exc))
+    if isinstance(exc, Truncated):
+        return LLMTruncated(str(exc))
+    if isinstance(exc, CallFailed):
+        return LLMCallFailed(str(exc))
+    return LLMCallFailed(f"{type(exc).__name__}: {exc}")

@@ -248,7 +248,7 @@ def main(argv: list[str] | None = None) -> int:
         "--extract",
         action="store_true",
         help="Extract facts from verified pages (implies --web, needs an "
-             "Anthropic key).",
+             "Anthropic or NVIDIA key).",
     )
     parser.add_argument(
         "--narrate",

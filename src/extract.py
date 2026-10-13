@@ -279,10 +279,13 @@ def verify_candidate(
     value = candidate.get("value")
     quote = candidate.get("quote")
 
-    if name not in EXTRACTABLE_FIELDS:
-        return None, f"field not extractable: {name}"
+# Registry-owned fields are checked first so the refusal explains the
+    # real reason: the model is not offered these at all, so proposing one
+    # means it invented the idea or copied it from elsewhere.
     if name in RESERVED_FIELDS:
         return None, f"field is owned by the registry: {name}"
+    if name not in EXTRACTABLE_FIELDS:
+        return None, f"field not extractable: {name}"
     if not value or not str(value).strip():
         return None, "empty value"
     if not quote_exists(quote or "", page_text):

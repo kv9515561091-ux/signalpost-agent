@@ -33,14 +33,16 @@ python -m unittest discover -s tests               # 188 tests
 python run_batch.py                                # batch over data/company_numbers.txt
 ```
 
-Optional LLM features need one extra install:
+Optional LLM features use either provider. Put one key in `.env`:
 
 ```bash
-pip install -r requirements-llm.txt
-export ANTHROPIC_API_KEY=sk-ant-...
+ANTHROPIC_API_KEY=sk-ant-...     # Claude; needs: pip install anthropic
+NVIDIA_API_KEY=nvapi-...         # NVIDIA NIM; nothing to install
 ```
 
-Without it the agent runs unchanged — see [Optional LLM](#optional-llm).
+An Anthropic key wins if both are set; `LLM_PROVIDER` overrides the
+choice (`anthropic` | `nvidia` | `none`). Without a key the agent runs
+unchanged — see [Optional LLM](#optional-llm).
 
 ### Caching
 
@@ -201,9 +203,33 @@ them unchanged if you prefer it.
 | Variable | Required | Purpose |
 |---|---|---|
 | `TINYFISH_API_KEY` | for `--web` | Search discovery |
-| `ANTHROPIC_API_KEY` | for `--extract` / LLM narrative | Fact extraction and explanation |
+| `ANTHROPIC_API_KEY` | for `--extract` | Claude, via the official SDK |
+| `NVIDIA_API_KEY` | for `--extract` | NVIDIA NIM or any Chat Completions endpoint |
+| `LLM_PROVIDER` | no | `anthropic` \| `nvidia` \| `none`; overrides auto-detection |
+| `NVIDIA_MODEL` | no | Default `nvidia/nemotron-3-super-120b-a12b` |
+| `NVIDIA_BASE_URL` | no | Default `https://integrate.api.nvidia.com/v1` |
+| `NVIDIA_THINKING` | no | `true` to leave the model's reasoning on |
 
 `ANTHROPIC_AUTH_TOKEN` and `CLAUDE_CODE_OAUTH_TOKEN` are also honoured.
+
+### Two providers, one guarantee
+
+Claude constrains generation with `output_config.format`, so the payload
+is schema-valid by construction. NVIDIA's hosted endpoint makes no such
+guarantee — `guided_json` is documented only for self-hosted NIM, and
+schema support is known to vary by model.
+
+So the NVIDIA backend asks for constrained output, falls back to
+instructing the schema in the prompt, and then parses defensively:
+markdown fences are stripped, prose around the object is ignored, and
+an unterminated object is reported as truncation rather than quietly
+repaired.
+
+**That difference cannot reach the facts.** Quoted evidence is checked
+against the page by `src/extract.py`, which is the agent's own code and
+behaves identically whichever provider answered. `tests/test_extraction_nvidia.py`
+proves it end to end: a hallucinated quote is discarded on the NVIDIA
+path exactly as it is on the Claude one.
 
 ## Dependencies
 
