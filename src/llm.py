@@ -23,6 +23,17 @@ import os
 from dataclasses import dataclass
 from typing import Any
 
+# Load .env here rather than relying on another module having done it.
+# The search provider happens to load it at import time, but extraction
+# and narration run without --web, so relying on that would make a key
+# in .env silently invisible on exactly the paths that need it.
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv()
+except ImportError:  # pragma: no cover - dotenv is a runtime dependency
+    pass
+
 MODEL = "claude-opus-5"
 
 DEFAULT_MAX_TOKENS = 8_000
