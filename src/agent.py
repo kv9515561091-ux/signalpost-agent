@@ -1,327 +1,760 @@
-from typing import Optional
+"""
+Signalpost Agent — registry-first company intelligence.
+
+The agent resolves a Norwegian organization number to a verified company
+profile. Its spine is Brønnøysundregistrene, which supplies identity,
+management and filed financials as Tier-1 evidence. Web discovery exists
+only to enrich fields the registries do not carry, and anything it
+contributes is held to the same identity and reliability checks.
+
+Pipeline::
+
+    org.nr
+      -> MOD-11 validation (rejects typos before any network call)
+      -> Brreg identity           (canonical)
+      -> Brreg roles              (management, board, auditor)
+      -> Brreg annual accounts    (multi-year financials)
+      -> web discovery            (optional enrichment, identity-gated)
+      -> profile + evidence
+"""
+
+from __future__ import annotations
+
+from typing import Any
 
 from pydantic import BaseModel, Field
 
 from src.brreg import get_company
-from src.evidence import Evidence
-from src.fact_extractor import extract_facts
-from src.fact_record import FactRecord
-from src.multi_source import discover_company_sources
+from src.conflicts import FieldValue, conflict_report, reconcile_all
+from src.discovery import discover_sources
+from src.explain import explain
+from src.evidence import Evidence, FactRecord
+from src.financials import get_financials
+from src.identity import CompanyIdentity
+from src.orgnumber import InvalidCompanyNumber, normalize, validate
+from src.roles import get_roles
 
+__all__ = [
+    "CompanyProfile",
+    "FinancialYear",
+    "RoleRecord",
+    "WebSource",
+    "build_profile",
+    "normalize_company_number",
+    "reconcile_evidence",
+    "validate_company_number",
+]
 
-class CompanyProfile(BaseModel):
-    company_number: str
-    company_name: Optional[str] = None
-    website: Optional[str] = None
-    address: Optional[str] = None
-    industry_code: Optional[str] = None
-    industry: Optional[str] = None
-    registration_date: Optional[str] = None
-
-    phone: Optional[str] = None
-    under_liquidation: Optional[bool] = None
-    under_forced_liquidation: Optional[bool] = None
-    registered_business_register: Optional[bool] = None
-    registered_vat_register: Optional[bool] = None
-    registered_voluntary_register: Optional[bool] = None
-    parent_company_number: Optional[str] = None
-
-    sources: list[str] = Field(default_factory=list)
-    evidence: list[Evidence] = Field(default_factory=list)
-    facts: list[FactRecord] = Field(default_factory=list)
+# Retained for callers of the previous public surface.
+normalize_company_number = normalize
 
 
 def validate_company_number(company_number: str) -> bool:
-    return company_number.isdigit() and len(company_number) == 9
+    """True when ``company_number`` is a valid Norwegian org number."""
+    try:
+        validate(company_number)
+        return True
+    except InvalidCompanyNumber:
+        return False
 
 
-def build_profile(company_number: str) -> CompanyProfile:
+class FinancialYear(BaseModel):
+    """One filed fiscal year, with currency kept alongside the figures."""
 
-    if not validate_company_number(company_number):
-        raise ValueError(
-            "Company number must contain exactly 9 digits"
-        )
+    fiscal_year: str | None = None
+    period_end: str | None = None
+    currency: str | None = None
+    statement_scope: str | None = None
+    audited: bool | None = None
 
-    # ---------------------------------------------------------
-    # Primary source: Brreg
-    # ---------------------------------------------------------
-    data = get_company(company_number)
+    revenue: float | None = None
+    operating_costs: float | None = None
+    operating_result: float | None = None
+    profit_before_tax: float | None = None
+    net_result: float | None = None
 
-    source_url = data["source"]
-    retrieved_at = data["retrieved_at"]
+    total_assets: float | None = None
+    total_equity: float | None = None
+    total_liabilities: float | None = None
 
-    evidence = [
-        Evidence(
-            field="company_number",
-            value=str(data["company_number"]),
-            source_url=source_url,
-            retrieved_at=retrieved_at,
-            evidence_text=(
-                f"Brreg registered organization number: "
-                f"{data['company_number']}"
-            ),
-            confidence=1.0,
+    operating_margin_pct: float | None = None
+    revenue_growth_pct: float | None = None
+
+
+class RoleRecord(BaseModel):
+    """One management, board or audit role."""
+
+    role: str | None = None
+    role_code: str | None = None
+    group: str | None = None
+    group_code: str | None = None
+    person_name: str | None = None
+    entity_name: str | None = None
+    entity_number: str | None = None
+    birth_year: str | None = None
+    changed_at: str | None = None
+
+
+class WebSource(BaseModel):
+    """A discovered public page whose identity was verified.
+
+    A source is recorded here only once its identity has been
+    established. The ``identity_basis`` and ``confidence`` fields record
+    *how* that was decided, so a low-confidence source is visibly
+    distinguishable from a registry record rather than blended in with it.
+    """
+
+    url: str
+    title: str | None = None
+    domain: str | None = None
+    tier: int
+    source_type: str
+    # Ceiling on any fact this source could support.
+    confidence: float
+    identity_basis: str
+    identity_signals: dict[str, bool] = Field(default_factory=dict)
+    query: str | None = None
+    retrieved_at: str
+
+
+class CompanyProfile(BaseModel):
+    """The verified output profile."""
+
+    company_number: str
+    company_name: str | None = None
+    previous_names: list[str] = Field(default_factory=list)
+
+    # Classification
+    legal_form: str | None = None
+    legal_form_code: str | None = None
+    status: str | None = None
+    industry: str | None = None
+    industry_code: str | None = None
+    sector: str | None = None
+    business_description: str | None = None
+    founding_date: str | None = None
+    registration_date: str | None = None
+    last_filed_annual_accounts: str | None = None
+
+    # Location
+    address: str | None = None
+    business_address: str | None = None
+    postal_address: str | None = None
+    municipality: str | None = None
+
+    # Scale
+    employee_count: int | None = None
+    employee_count_as_of: str | None = None
+
+    # Contact
+    website: str | None = None
+    phone: str | None = None
+    email: str | None = None
+
+    # Health
+    bankruptcy: bool | None = None
+    under_liquidation: bool | None = None
+
+    # Group
+    is_group_parent: bool | None = None
+    parent_company_number: str | None = None
+
+    # Management
+    ceo_name: str | None = None
+    board_chair_name: str | None = None
+    board_size: int | None = None
+    auditor_name: str | None = None
+    # Sole proprietor. An ENK has no managing director because the
+    # owner is the company.
+    owner_name: str | None = None
+    roles: list[RoleRecord] = Field(default_factory=list)
+
+    # Financials
+    financial_currency: str | None = None
+    financials: list[FinancialYear] = Field(default_factory=list)
+
+    # Provenance
+    sources: list[str] = Field(default_factory=list)
+    web_sources: list[WebSource] = Field(default_factory=list)
+    evidence: list[Evidence] = Field(default_factory=list)
+    facts: list[FactRecord] = Field(default_factory=list)
+    # Fields where sources disagreed, preserved rather than silently
+    # reconciled. Empty when every source agrees.
+    conflicts: list[dict[str, Any]] = Field(default_factory=list)
+    # Candidate facts the extractor refused, with the reason. Kept so a
+    # reviewer can see what was offered and why it was not published.
+    extraction_rejected: list[dict[str, Any]] = Field(default_factory=list)
+    explanation: dict[str, Any] | None = None
+    # Stages that could not be retrieved. An empty profile section that
+    # the caller might otherwise mistake for "the company has none of
+    # these" is recorded here explicitly.
+    retrieval_errors: list[str] = Field(default_factory=list)
+    retrieved_at: str | None = None
+
+    @property
+    def latest_financials(self) -> FinancialYear | None:
+        return self.financials[0] if self.financials else None
+
+
+def _record(
+    field: str,
+    value: Any,
+    *,
+    source_url: str,
+    retrieved_at: str,
+    evidence_text: str,
+    as_of: str | None = None,
+    reporting_period: str | None = None,
+    tier: int = 1,
+    source_type: str = "official_registry",
+) -> Evidence:
+    return Evidence(
+        field=field,
+        value=value,
+        source_url=source_url,
+        retrieved_at=retrieved_at,
+        evidence_text=evidence_text,
+        confidence=1.0,
+        source_tier=tier,
+        source_type=source_type,
+        as_of=as_of,
+        reporting_period=reporting_period,
+    )
+
+
+def _add(evidence: list[Evidence], entry: Evidence | None) -> None:
+    if entry is not None and entry.value is not None and entry.value != "":
+        evidence.append(entry)
+
+
+def _registry_evidence(company: dict[str, Any]) -> list[Evidence]:
+    """Attach provenance to every identity field Brreg supplied."""
+    url = company["source"]
+    at = company["retrieved_at"]
+    name = company.get("company_name") or "the entity"
+    out: list[Evidence] = []
+
+    _add(out, _record(
+        "company_number", company.get("company_number"),
+        source_url=url, retrieved_at=at,
+        evidence_text=f"Enhetsregisteret org.nr {company.get('company_number')}",
+        
+    ))
+    _add(out, _record(
+        "company_name", company.get("company_name"),
+        source_url=url, retrieved_at=at,
+        evidence_text=f"Registered legal name: {name}",
+        
+    ))
+    _add(out, _record(
+        "legal_form", company.get("organization_form"),
+        source_url=url, retrieved_at=at,
+        evidence_text=f"Legal form: {company.get('organization_form')}",
+        
+    ))
+
+    industry = company.get("industry") or {}
+    _add(out, _record(
+        "industry", industry.get("description"),
+        source_url=url, retrieved_at=at,
+        evidence_text=(
+            f"NACE {industry.get('code')}: {industry.get('description')}"
         ),
-        Evidence(
-            field="company_name",
-            value=data["company_name"],
-            source_url=source_url,
-            retrieved_at=retrieved_at,
-            evidence_text=(
-                f"Brreg registered company name: "
-                f"{data['company_name']}"
-            ),
-            confidence=1.0,
+        
+    ))
+
+    _add(out, _record(
+        "business_description", company.get("business_description"),
+        source_url=url, retrieved_at=at,
+        evidence_text=(
+            "Purpose as registered: " + str(company.get("business_description"))
         ),
-    ]
+        
+    ))
 
-    # ---------------------------------------------------------
-    # Address
-    # ---------------------------------------------------------
-    if data.get("address"):
-        evidence.append(
-            Evidence(
-                field="address",
-                value=data["address"],
-                source_url=source_url,
-                retrieved_at=retrieved_at,
-                evidence_text=(
-                    f"Brreg registered business address: "
-                    f"{data['address']}"
-                ),
-                confidence=1.0,
-            )
-        )
+    _add(out, _record(
+        "address", company.get("business_address") or company.get("address"),
+        source_url=url, retrieved_at=at,
+        evidence_text=f"Registered business address: {company.get('address')}",
+        
+    ))
+    _add(out, _record(
+        "postal_address", company.get("postal_address"),
+        source_url=url, retrieved_at=at,
+        evidence_text=f"Registered postal address: {company.get('postal_address')}",
+        
+    ))
+    _add(out, _record(
+        "municipality", company.get("municipality"),
+        source_url=url, retrieved_at=at,
+        evidence_text=f"Municipality: {company.get('municipality')}",
+        
+    ))
 
-    # ---------------------------------------------------------
-    # Registration date
-    # ---------------------------------------------------------
-    if data.get("registration_date"):
-        evidence.append(
-            Evidence(
-                field="registration_date",
-                value=data["registration_date"],
-                source_url=source_url,
-                retrieved_at=retrieved_at,
-                evidence_text=(
-                    f"Brreg registration date: "
-                    f"{data['registration_date']}"
-                ),
-                confidence=1.0,
-            )
-        )
+    _add(out, _record(
+        "registration_date", company.get("registration_date"),
+        source_url=url, retrieved_at=at,
+        evidence_text=f"Registered in Enhetsregisteret {company.get('registration_date')}",
+        
+    ))
+    _add(out, _record(
+        "founding_date", company.get("founding_date"),
+        source_url=url, retrieved_at=at,
+        evidence_text=f"Established {company.get('founding_date')}",
+    ))
+    _add(out, _record(
+        "last_filed_annual_accounts", company.get("last_filed_annual_accounts"),
+        source_url=url, retrieved_at=at,
+        evidence_text=f"Last filed annual accounts: {company.get('last_filed_annual_accounts')}",
+        as_of=company.get("last_filed_annual_accounts"),
+    ))
 
-    # ---------------------------------------------------------
-    # Industry
-    # ---------------------------------------------------------
-    industry = data.get("industry") or {}
+    _add(out, _record(
+        "employee_count", company.get("employee_count"),
+        source_url=url, retrieved_at=at,
+        evidence_text=f"Registered employees: {company.get('employee_count')}",
+        as_of=company.get("employee_count_as_of"),
+    ))
+    _add(out, _record(
+        "municipality_code", company.get("municipality_code"),
+        source_url=url, retrieved_at=at,
+        evidence_text=f"Municipality code {company.get('municipality_code')}",
+        
+    ))
 
-    industry_code = industry.get("kode")
-    industry_description = industry.get("beskrivelse")
+    for field, label in (
+        ("website", "Registered website"),
+        ("phone", "Registered phone"),
+        ("email", "Registered email"),
+    ):
+        _add(out, _record(
+            field, company.get(field),
+            source_url=url, retrieved_at=at,
+            evidence_text=f"{label}: {company.get(field)}",
+            
+        ))
 
-    if industry_description:
-        evidence.append(
-            Evidence(
-                field="industry",
-                value=industry_description,
-                source_url=source_url,
-                retrieved_at=retrieved_at,
-                evidence_text=(
-                    f"Brreg industry classification: "
-                    f"{industry_description}"
-                ),
-                confidence=1.0,
-            )
-        )
-
-    # ---------------------------------------------------------
-    # Website
-    # ---------------------------------------------------------
-    if data.get("website"):
-        evidence.append(
-            Evidence(
-                field="website",
-                value=data["website"],
-                source_url=source_url,
-                retrieved_at=retrieved_at,
-                evidence_text=(
-                    f"Brreg registered website: "
-                    f"{data['website']}"
-                ),
-                confidence=1.0,
-            )
-        )
-
-    # ---------------------------------------------------------
-    # Other Brreg fields
-    # ---------------------------------------------------------
-    brreg_fields = [
-        (
-            "phone",
-            data.get("phone"),
-            "Brreg registered phone number",
-        ),
-        (
-            "under_liquidation",
-            data.get("under_liquidation"),
-            "Brreg liquidation status",
-        ),
-        (
-            "under_forced_liquidation",
-            data.get("under_forced_liquidation"),
-            "Brreg forced liquidation status",
-        ),
-        (
-            "registered_business_register",
-            data.get("registered_business_register"),
-            "Brreg business register registration",
-        ),
-        (
-            "registered_vat_register",
-            data.get("registered_vat_register"),
-            "Brreg VAT register registration",
-        ),
-        (
-            "registered_voluntary_register",
-            data.get("registered_voluntary_register"),
-            "Brreg voluntary register registration",
-        ),
-        (
-            "parent_company_number",
-            data.get("parent_company_number"),
-            "Brreg parent company organization number",
-        ),
-    ]
-
-    for field, value, description in brreg_fields:
-
+    for field, label in (
+        ("bankruptcy", "Bankruptcy status"),
+        ("under_liquidation", "Under liquidation"),
+        ("is_group_parent", "Group parent"),
+    ):
+        value = company.get(field)
         if value is not None:
-            evidence.append(
-                Evidence(
-                    field=field,
-                    value=str(value),
-                    source_url=source_url,
-                    retrieved_at=retrieved_at,
-                    evidence_text=f"{description}: {value}",
-                    confidence=1.0,
-                )
-            )
+            _add(out, _record(
+                field, value,
+                source_url=url, retrieved_at=at,
+                evidence_text=f"{label}: {value}",
+                
+            ))
 
-    # ---------------------------------------------------------
-    # Secondary source discovery
-    # ---------------------------------------------------------
-    discovered_sources = discover_company_sources(
-        company_name=data["company_name"],
-        company_number=str(data["company_number"]),
-        website=data.get("website"),
+    return out
+
+
+def _roles_evidence(
+    roles: dict[str, Any],
+) -> tuple[list[Evidence], list[RoleRecord]]:
+    """Turn the roles response into records plus provenance."""
+    url = roles["source"]
+    at = roles["retrieved_at"]
+    evidence: list[Evidence] = []
+    records: list[RoleRecord] = []
+
+    for raw in roles.get("roles") or []:
+        record = RoleRecord(
+            role=raw.get("role"),
+            role_code=raw.get("role_code"),
+            group=raw.get("group"),
+            group_code=raw.get("group_code"),
+            person_name=raw.get("person_name"),
+            entity_name=raw.get("entity_name"),
+            entity_number=raw.get("entity_number"),
+            birth_year=raw.get("birth_year"),
+            changed_at=raw.get("group_changed_at"),
+        )
+        records.append(record)
+
+        label = record.person_name or record.entity_name
+        if not label:
+            continue
+
+        _add(evidence, _record(
+            f"role:{record.role_code or record.group_code}",
+            label,
+            source_url=url,
+            retrieved_at=at,
+            evidence_text=(
+                f"{record.role or record.role_code} ({record.group}): {label}"
+            ),
+            as_of=record.changed_at,
+            source_type="official_registry_roles",
+        ))
+
+    return evidence, records
+
+
+def _financial_evidence(
+    financials: dict[str, Any],
+) -> tuple[list[Evidence], list[FinancialYear]]:
+    """Turn filed accounts into year records plus provenance."""
+    url = financials["source"]
+    at = financials["retrieved_at"]
+    evidence: list[Evidence] = []
+    years: list[FinancialYear] = []
+
+    metrics = (
+        ("revenue", "Revenue"),
+        ("operating_result", "Operating result"),
+        ("net_result", "Net result"),
+        ("total_assets", "Total assets"),
+        ("total_equity", "Total equity"),
     )
 
-    verified_source_urls = [
-        source["url"]
-        for source in discovered_sources
-        if source.get("identity_verified")
-    ]
+    for year in financials.get("years") or []:
+        record = FinancialYear(**{
+            k: v for k, v in year.items()
+            if k in FinancialYear.model_fields
+        })
+        years.append(record)
 
-    all_sources = list(
-        dict.fromkeys(
-            [source_url] + verified_source_urls
-        )
-    )
+        currency = record.currency or financials.get("currency") or "NOK"
+        scope = record.statement_scope or "SELSKAP"
 
-    # ---------------------------------------------------------
-    # Secondary fact extraction
-    #
-    # Collect facts from all verified snippets.
-    # Only one value is retained for each field.
-    # Higher-ranked sources are processed first.
-    # ---------------------------------------------------------
-    facts = []
-    seen_fields = set()
-
-    target_company_number = str(
-        data["company_number"]
-    ).lower()
-
-    target_company_name = data["company_name"].lower()
-
-    for source in discovered_sources:
-
-        if not source.get("identity_verified"):
-            continue
-
-        snippet = source.get("snippet", "").strip()
-
-        if not snippet:
-            continue
-
-        snippet_lower = snippet.lower()
-
-        # Require identity evidence in the SAME snippet.
-        snippet_identifies_company = (
-            target_company_number in snippet_lower
-            or target_company_name in snippet_lower
-        )
-
-        if not snippet_identifies_company:
-            continue
-
-        extracted_facts = extract_facts(
-            snippet,
-            data["company_name"],
-        )
-
-        for field, value in extracted_facts.items():
-
+        for key, label in metrics:
+            value = getattr(record, key)
             if value is None:
                 continue
 
-            # Keep the first value encountered.
-            # Sources are already ranked by priority.
-            if field in seen_fields:
-                continue
+            _add(evidence, _record(
+                key, value,
+                source_url=url,
+                retrieved_at=at,
+                evidence_text=(
+                    f"{label} FY{record.fiscal_year} ({scope}, {currency}): "
+                    f"{value:,.0f} {currency}"
+                ),
+                as_of=record.period_end,
+                reporting_period=record.fiscal_year,
+                source_type="official_annual_accounts",
+            ))
 
-            seen_fields.add(field)
+    return evidence, years
 
-            facts.append(
+
+def _conflict_key(item: Evidence) -> str | None:
+    """Reconciliation key for one evidence record.
+
+    Annual figures are keyed by reporting period, because revenue in
+    FY2025 and FY2023 are two different facts rather than a disagreement
+    about one. Role records return ``None``: a field like ``role:DAGL``
+    legitimately holds several people, and two co-chief executives is a
+    fact about the company, not a conflict between sources.
+    """
+    if item.field == "company_number":
+        return None
+    if item.field.startswith("role:"):
+        return None
+    if item.reporting_period:
+        return f"{item.field}@{item.reporting_period}"
+    return item.field
+
+
+def reconcile_evidence(evidence: list[Evidence]) -> list[dict[str, Any]]:
+    """Detect disagreements across every sourced claim for a company.
+
+    Exposed for testing and for callers that assemble evidence from
+    several stages.
+    """
+    claims: dict[str, list[FieldValue]] = {}
+
+    for item in evidence:
+        key = _conflict_key(item)
+        if key is None:
+            continue
+
+        claims.setdefault(key, []).append(
+            FieldValue(
+                field=key,
+                value=item.value,
+                source_url=item.source_url,
+                retrieved_at=item.retrieved_at,
+                tier=item.source_tier,
+                confidence=item.confidence,
+                source_type=item.source_type,
+                reporting_period=item.reporting_period,
+                as_of=item.as_of,
+            )
+        )
+
+    return conflict_report(reconcile_all(claims))
+
+
+def _apply_extraction(
+    profile: CompanyProfile,
+    identity: CompanyIdentity,
+    *,
+    max_sources: int = 3,
+    max_pages: int = 4,
+) -> None:
+    """Read verified pages and extract publishable facts from them.
+
+    Only sources that already passed identity verification are fetched, and
+    every extracted fact must quote text that exists verbatim in the page
+    it claims to come from. Anything else is refused and recorded.
+    """
+    from src.extract import extract_from_page
+    from src.page import UnsafeUrl, fetch_page
+
+    candidates = [
+        source
+        for source in profile.web_sources
+        # Tier 7 pages cannot support a published fact; fetching them
+        # would cost a request and a model call for nothing.
+        if source.tier <= 6
+    ][:max_sources]
+
+    if not candidates:
+        return
+
+    for source in candidates[:max_pages]:
+        try:
+            page = fetch_page(source.url)
+        except (UnsafeUrl, Exception) as exc:  # noqa: BLE001
+            profile.retrieval_errors.append(
+                f"page {source.domain}: {type(exc).__name__}"
+            )
+            continue
+
+        report = extract_from_page(
+            page_text=page.text,
+            source_url=page.url,
+            retrieved_at=page.retrieved_at,
+            company_number=identity.company_number,
+            company_name=identity.name,
+            tier=source.tier,
+            source_type=source.source_type,
+            title=page.title,
+        )
+
+        for fact in report.facts:
+            profile.facts.append(
                 FactRecord(
-                    field=field,
-                    value=str(value),
-                    source_url=source["url"],
-                    retrieved_at=retrieved_at,
-                    evidence_text=snippet,
-                    confidence=0.90,
+                    field=fact.field,
+                    value=fact.value,
+                    source_url=fact.source_url,
+                    retrieved_at=fact.retrieved_at,
+                    evidence_text=fact.quote,
+                    confidence=fact.confidence,
+                    source_tier=fact.tier,
+                    source_type=fact.source_type,
+                    as_of=fact.published_date,
                 )
             )
 
-    # ---------------------------------------------------------
-    # Final company profile
-    # ---------------------------------------------------------
-    return CompanyProfile(
-        company_number=str(data["company_number"]),
-        company_name=data["company_name"],
-        website=data["website"],
-        address=data["address"],
-        industry_code=industry_code,
-        industry=industry_description,
-        registration_date=data["registration_date"],
-        phone=data.get("phone"),
-        under_liquidation=data.get("under_liquidation"),
-        under_forced_liquidation=data.get(
-            "under_forced_liquidation"
-        ),
-        registered_business_register=data.get(
-            "registered_business_register"
-        ),
-        registered_vat_register=data.get(
-            "registered_vat_register"
-        ),
-        registered_voluntary_register=data.get(
-            "registered_voluntary_register"
-        ),
-        parent_company_number=data.get(
-            "parent_company_number"
-        ),
-        sources=all_sources,
-        evidence=evidence,
-        facts=facts,
+        if report.rejected:
+            profile.extraction_rejected.append(
+                {
+                    "source_url": source.url,
+                    "rejected": report.rejected,
+                }
+            )
+        if report.error and not report.llm_used:
+            profile.retrieval_errors.append(f"extraction: {report.error}")
+
+    # A stage that is unavailable reports the same reason for every page;
+    # repeating it once per attempt obscures the gaps that differ.
+    deduplicated = list(dict.fromkeys(profile.retrieval_errors))
+    profile.retrieval_errors = deduplicated
+
+
+def _apply_web_enrichment(
+    profile: CompanyProfile,
+    company: dict[str, Any],
+) -> None:
+    """Discover, verify and reconcile web sources against the registry.
+
+    Web sources are attached to the profile with their reliability tier and
+    identity basis. They contribute no new facts on their own: without a
+    trustworthy extractor, a value read off an arbitrary page is weaker
+    evidence than the registry record already in hand, and replacing one
+    with the other would be a downgrade dressed as an enrichment.
+    """
+    identity = CompanyIdentity.from_brreg(company)
+
+    def provider(query: str, max_results: int) -> list[dict]:
+        from src.tinyfish_search import search_tinyfish
+
+        return search_tinyfish(query=query, max_results=max_results)
+
+    discovered = discover_sources(identity, provider, max_results=10)
+
+    profile.web_sources = [
+        WebSource(
+            url=source["url"],
+            title=source.get("title"),
+            domain=source.get("domain"),
+            tier=source["tier"],
+            source_type=source["source_type"],
+            confidence=source["confidence"],
+            identity_basis=source["identity_basis"],
+            identity_signals=source.get("identity_signals") or {},
+            query=source.get("query"),
+            retrieved_at=source["retrieved_at"],
+        )
+        for source in discovered
+    ]
+
+    profile.sources = list(
+        dict.fromkeys(
+            [*profile.sources, *(s.url for s in profile.web_sources)]
+        )
     )
+
+    # Registry records are Tier 1, so any source asserting a different
+    # value surfaces as a conflict rather than overwriting them.
+    profile.conflicts = reconcile_evidence(profile.evidence)
+
+
+def build_profile(
+    company_number: str,
+    *,
+    include_web: bool = False,
+    include_extraction: bool = False,
+    include_narrative: bool = False,
+    use_llm: bool = True,
+) -> CompanyProfile:
+    """Build a verified company profile from a Norwegian org number.
+
+    Args:
+        company_number: The 9-digit organization number, in any
+            separator style.
+        include_web: Discover and verify public sources. Requires a
+            search provider key.
+        include_extraction: Read those sources and extract facts from
+            them. Each fact must quote the page verbatim or it is
+            refused. Requires ``include_web``.
+        include_narrative: Add a written explanation. Falls back to a
+            deterministic summary when no LLM is configured.
+        use_llm: Whether to permit LLM calls at all. ``False`` forces
+            fully deterministic behaviour.
+
+    Raises:
+        InvalidCompanyNumber: Malformed number or failed MOD-11 checksum.
+        CompanyNotFound: No such entity in Enhetsregisteret.
+    """
+    org_number = validate(company_number)
+
+    company = get_company(org_number)
+    roles = get_roles(org_number)
+    financials = get_financials(org_number)
+
+    identity = CompanyIdentity.from_brreg(company)
+
+    registry_evidence = _registry_evidence(company)
+    role_evidence, role_records = _roles_evidence(roles)
+    fin_evidence, financial_years = _financial_evidence(financials)
+
+    evidence = [*registry_evidence, *role_evidence, *fin_evidence]
+
+    # Identity is mandatory and raises on failure; management and accounts
+    # are enrichments that degrade to empty. Record which, so a missing
+    # CEO is never mistaken for a company that has none.
+    retrieval_errors = [
+        f"roles: {roles['error']}" if roles.get("error") else None,
+        f"financials: {financials['error']}"
+        if financials.get("error")
+        else None,
+    ]
+    retrieval_errors = [e for e in retrieval_errors if e]
+
+    industry = company.get("industry") or {}
+
+    sources: list[str] = list(
+        dict.fromkeys(
+            [company["source"], roles["source"], financials["source"]]
+        )
+    )
+
+    profile = CompanyProfile(
+        company_number=company["company_number"],
+        company_name=company.get("company_name"),
+        previous_names=[
+            n["name"] for n in company.get("previous_names") or []
+            if n.get("name")
+        ],
+
+        legal_form=company.get("organization_form"),
+        legal_form_code=company.get("organization_form_code"),
+        status=company.get("status"),
+        industry=industry.get("description"),
+        industry_code=industry.get("code"),
+        sector=(company.get("sector") or {}).get("description"),
+        business_description=company.get("business_description"),
+        founding_date=company.get("founding_date"),
+        registration_date=company.get("registration_date"),
+        last_filed_annual_accounts=company.get("last_filed_annual_accounts"),
+
+        address=company.get("address"),
+        business_address=company.get("business_address"),
+        postal_address=company.get("postal_address"),
+        municipality=company.get("municipality"),
+
+        employee_count=company.get("employee_count"),
+        employee_count_as_of=company.get("employee_count_as_of"),
+
+        website=company.get("website"),
+        phone=company.get("phone"),
+        email=company.get("email"),
+
+        bankruptcy=company.get("bankruptcy"),
+        under_liquidation=company.get("under_liquidation"),
+
+        is_group_parent=company.get("is_group_parent"),
+        parent_company_number=company.get("parent_company_number"),
+
+        ceo_name=roles.get("ceo_name"),
+        board_chair_name=roles.get("board_chair_name"),
+        board_size=roles.get("board_size"),
+        auditor_name=roles.get("auditor_name"),
+        owner_name=roles.get("owner_name"),
+        roles=role_records,
+
+        financial_currency=financials.get("currency"),
+        financials=financial_years,
+
+        sources=sources,
+        evidence=evidence,
+        retrieval_errors=retrieval_errors,
+        retrieved_at=company["retrieved_at"],
+    )
+
+    # -------------------------------------------------------------
+    # Optional web enrichment
+    #
+    # Discovery never overrides a registry record. It can corroborate
+    # one, and it can contradict one — in which case the disagreement is
+    # recorded rather than resolved by convenience.
+    # -------------------------------------------------------------
+    if include_web:
+        _apply_web_enrichment(profile, company)
+
+        if include_extraction:
+            _apply_extraction(profile, identity)
+
+    if include_narrative:
+        profile.explanation = explain(profile, use_llm=use_llm).to_dict()
+
+    # `facts` is deliberately left empty here. Every registry field already
+    # carries full provenance in `evidence`; mirroring it would double the
+    # payload with identical records. This list is reserved for claims the
+    # enrichment stage produces, which do not map 1:1 onto a registry field.
+    return profile
+
+
+# ``python -m src.agent <org.nr>`` runs this module as __main__, so the
+# entry point is exposed here as well as in src/__main__.py. The import
+# is deferred to keep module import free of side effects.
+if __name__ == "__main__":  # pragma: no cover - process entry point
+    from src.__main__ import main
+
+    raise SystemExit(main())

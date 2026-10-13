@@ -1,0 +1,14 @@
+# Signalpost Agent — core runtime.
+# Pinned to the versions this agent was verified against.
+#
+# The agent reads JSON from three Norwegian open-data endpoints and
+# flattens web pages using the standard library alone. Every fact it
+# publishes comes from a source whose identity was verified first, so no
+# HTML parser is required.
+#
+# These three dependencies are sufficient for the full registry spine,
+# web discovery, identity verification and deterministic explanation.
+
+requests==2.32.5
+pydantic==2.12.4
+python-dotenv==1.2.1

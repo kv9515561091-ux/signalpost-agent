@@ -1,0 +1,18 @@
+# Signalpost Agent — optional LLM extras.
+#
+# Install alongside requirements.txt only if you want LLM-backed fact
+# extraction and narrative explanation:
+#
+#     pip install -r requirements-llm.txt
+#
+# Then set an API key:
+#
+#     ANTHROPIC_API_KEY=sk-ant-...
+#
+# Without these, the agent runs unchanged. Extraction is skipped and the
+# explanation falls back to a deterministic summary built from the
+# verified record. Nothing about the agent's correctness depends on the
+# LLM: every extracted fact must quote its source verbatim or it is
+# discarded.
+
+anthropic>=1.13.0

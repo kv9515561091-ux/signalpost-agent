@@ -1,40 +1,30 @@
-from src.batch import load_company_numbers, process_companies
+"""CLI entry point: ``python run_batch.py``."""
+
+from src.batch import load_company_numbers, process_companies, summarise
 from src.request_tracker import request_tracker
 
 
-def main():
+def main() -> None:
     company_numbers = load_company_numbers()
 
-    print(
-        f"Processing {len(company_numbers)} companies..."
-    )
+    if not company_numbers:
+        print("No company numbers found in data/company_numbers.txt")
+        return
+
+    print(f"Building {len(company_numbers)} company profiles...")
 
     results = process_companies(company_numbers)
+    stats = summarise(results)
 
-    successful = sum(
-        1
-        for result in results
-        if "error" not in result
-    )
+    for key, value in stats.items():
+        print(f"  {key:<16} {value}")
 
-    failed = len(results) - successful
-
-    print(f"Completed: {successful}")
-    print(f"Failed: {failed}")
-
+    tracker = request_tracker.summary()
     print(
-        f"Requests used: "
-        f"{request_tracker.count}"
+        f"  requests        {tracker['requests_used']}"
+        f"/{tracker['request_limit']}"
     )
-
-    print(
-        f"Requests remaining: "
-        f"{request_tracker.remaining()}"
-    )
-
-    print(
-        "Output: data/company_profiles.json"
-    )
+    print("  output          data/company_profiles.json")
 
 
 if __name__ == "__main__":
