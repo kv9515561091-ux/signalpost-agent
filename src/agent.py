@@ -578,6 +578,10 @@ def _apply_extraction(
     if not candidates:
         return
 
+    # Carried across pages so the same statement from two directories is
+    # published once.
+    accepted_facts = []
+
     for source in candidates[:max_pages]:
         try:
             page = fetch_page(source.url)
@@ -604,9 +608,19 @@ def _apply_extraction(
             tier=source.tier,
             source_type=source.source_type,
             title=page.title,
+            # Values Brreg already published, so a directory reprinting
+            # them is not mistaken for a new discovery.
+            registry_values=(
+                identity.name,
+                identity.address,
+                identity.postal_code,
+                identity.registered_website,
+            ),
+            already_accepted=accepted_facts,
         )
 
         for fact in report.facts:
+            accepted_facts.append(fact)
             profile.facts.append(
                 FactRecord(
                     field=fact.field,

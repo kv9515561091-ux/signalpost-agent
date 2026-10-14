@@ -26,14 +26,14 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Iterable
 
 from src import llm
 from src.sources import TIER_MAX_CONFIDENCE
 from src.text import fold
 
-# Facts the registry already supplies. The model is never asked for
-# these, so it cannot contradict or overwrite them.
+# Facts the registry already supplies, authoritatively. The model is
+# never asked for these, so it cannot contradict or overwrite them.
 RESERVED_FIELDS = frozenset({
     "company_number",
     "company_name",
@@ -45,6 +45,12 @@ RESERVED_FIELDS = frozenset({
     "business_address",
     "postal_address",
     "municipality",
+    # Address restated as free text. A live run spent a model call
+    # rediscovering the registered address, which Brreg had already
+    # supplied for free; the slot is better spent on something the
+    # registry cannot tell us.
+    "locations",
+    "geographic_presence",
     "industry",
     "industry_code",
     "employee_count",
@@ -68,15 +74,15 @@ RESERVED_FIELDS = frozenset({
 })
 
 # The vocabulary the model is allowed to fill, chosen to match the
-# taxonomy in the specification.
+# taxonomy in the specification while staying clear of what Brreg
+# already holds. Every entry here is something the registry cannot tell
+# us, which is the only reason to spend a model call on it.
 EXTRACTABLE_FIELDS = (
     "business_summary",
     "products",
     "services",
     "target_customers",
     "markets_served",
-    "geographic_presence",
-    "locations",
     "certifications",
     "technology_stack",
     "ownership_structure",
@@ -147,7 +153,22 @@ Rules:
   mentioned on the page, even if they appear in a list or comparison.
 - Do not report figures that the company itself registers with the
   Norwegian business registry (revenue, profit, employee count, legal
-  form, address). Those are already sourced authoritatively.
+  form, address, municipality, locations). Those are already sourced
+  authoritatively from the registry, and repeating them wastes the only
+  thing you were called for.
+- Report only what this page says that a registry lookup could not.
+  A description of the business, the things it sells or does, the
+  customers it serves, the certifications it holds, and dated
+  announcements are all worth reporting. An address or a legal form is
+  not.
+- Report facts about the BUSINESS. Biographical details about the
+  individuals behind it — family, children, health, hobbies, personal
+  history, where someone used to live — are not company facts, even
+  when the page is the company's own site and the detail is accurate.
+  A page that mixes a CV with a company description is a source for the
+  second half only.
+- If a page is a personal site that mentions a business only in passing,
+  report the business and nothing else.
 - Prefer specific, verifiable statements over vague marketing language.
 - If the page describes a service, product or event, date it using the
   date on the page if one is given.
@@ -167,6 +188,59 @@ _DATE_LONG = re.compile(
     r"\b(\d{1,2})\.?\s+([A-Za-zæøåÆØÅ]+)\s+(\d{4})\b", re.IGNORECASE
 )
 _ORG_NUMBER = re.compile(r"(?<!\d)\d{3}[\s-]?\d{3}[\s-]?\d{3}(?!\d)")
+
+
+def _tokens(value: str) -> set[str]:
+    """Distinctive tokens for comparing two fact statements.
+
+    Numbers are kept at any length. "148 countries" and "52 countries"
+    differ only in that number, and dropping short numeric tokens made
+    genuinely distinct facts look identical.
+    """
+    return {
+        token
+        for token in fold(value).split()
+        if len(token) >= 4 or token.isdigit()
+    }
+
+
+def _overlap(a: str, b: str) -> float:
+    """How much of the shorter statement is covered by the longer.
+
+    Containment rather than Jaccard: two phrasings of one fact often
+    differ in length, and Jaccard penalises exactly the rephrasing we
+    want to catch. The score is 1.0 when every distinctive token of the
+    shorter fact appears in the longer one.
+    """
+    ta, tb = _tokens(a), _tokens(b)
+    if not ta or not tb:
+        return 0.0
+    return len(ta & tb) / min(len(ta), len(tb))
+
+
+def _restates_registry(value: str, registry_values: Iterable[str]) -> bool:
+    """Whether a fact merely repeats something Brreg already supplied.
+
+    Directory sites reprint registry fields. Publishing those again as
+    if they were new discoveries wastes a slot and inflates coverage with
+    noise. The field allowlist cannot stop this on its own, because a
+    model asked for ``business_summary`` will happily tuck an employee
+    count in there.
+    """
+    candidate = fold(value)
+    if not candidate:
+        return False
+
+    for known in registry_values:
+        if not known:
+            continue
+        normalised = fold(known)
+        if len(normalised) < 6:
+            continue
+        if normalised and normalised in candidate:
+            return True
+
+    return False
 
 
 @dataclass
@@ -269,6 +343,8 @@ def verify_candidate(
     tier: int,
     source_type: str,
     company_number: str,
+    registry_values: Iterable[str] = (),
+    accepted: Iterable["ExtractedFact"] = (),
 ) -> tuple[ExtractedFact | None, str | None]:
     """Check one model-proposed fact.
 
@@ -279,9 +355,9 @@ def verify_candidate(
     value = candidate.get("value")
     quote = candidate.get("quote")
 
-# Registry-owned fields are checked first so the refusal explains the
-    # real reason: the model is not offered these at all, so proposing one
-    # means it invented the idea or copied it from elsewhere.
+    # Registry-owned fields are checked first so the refusal explains the
+    # real reason: the model is not offered these at all, so proposing
+    # one means it invented the idea or copied it from elsewhere.
     if name in RESERVED_FIELDS:
         return None, f"field is owned by the registry: {name}"
     if name not in EXTRACTABLE_FIELDS:
@@ -298,10 +374,19 @@ def verify_candidate(
         if digits != company_number:
             return None, f"quote cites another organization: {digits}"
 
+    text = str(value).strip()
+
+    if _restates_registry(text, registry_values):
+        return None, "repeats a value already sourced from the registry"
+
+    for existing in accepted:
+        if existing.field == name and _overlap(existing.value, text) >= 0.5:
+            return None, f"duplicates an accepted {name} fact"
+
     return (
         ExtractedFact(
             field=name,
-            value=str(value).strip(),
+            value=text,
             quote=quote.strip(),
             source_url=source_url,
             retrieved_at=retrieved_at,
@@ -326,13 +411,24 @@ def extract_from_page(
     tier: int,
     source_type: str,
     title: str = "",
+    registry_values: Iterable[str] = (),
+    already_accepted: Iterable[ExtractedFact] = (),
 ) -> ExtractionReport:
     """Extract and verify facts from one page.
+
+    Args:
+        already_accepted: Facts already published from earlier pages.
+            Two directories frequently state the same thing, and without
+            carrying these forward each page would pass its own copy
+            through independently.
 
     Never raises: a model failure yields a report whose ``error`` says so
     and whose ``facts`` list is empty.
     """
     report = ExtractionReport(source_url=source_url)
+    # Carried forward so cross-page duplicates are caught here rather
+    # than surfacing twice in the profile.
+    seen_facts = list(already_accepted)
 
     if not page_text or not page_text.strip():
         report.error = "page had no text content"
@@ -382,10 +478,13 @@ def extract_from_page(
             tier=tier,
             source_type=source_type,
             company_number=company_number,
+            registry_values=registry_values,
+            accepted=seen_facts,
         )
 
         if fact is not None:
             report.facts.append(fact)
+            seen_facts.append(fact)
         else:
             report.rejected.append(
                 {

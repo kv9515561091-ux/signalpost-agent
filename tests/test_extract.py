@@ -42,7 +42,7 @@ def candidate(field="business_summary", value="Investment company",
     }
 
 
-def run_verify(cand, page_text=PAGE):
+def run_verify(cand, page_text=PAGE, registry_values=(), accepted=()):
     return verify_candidate(
         cand,
         page_text=page_text,
@@ -51,6 +51,8 @@ def run_verify(cand, page_text=PAGE):
         tier=2,
         source_type="official_company_website",
         company_number="989061593",
+        registry_values=registry_values,
+        accepted=accepted,
     )
 
 
@@ -126,6 +128,50 @@ class QuoteVerificationTests(unittest.TestCase):
 
 
 class FieldAllowlistTests(unittest.TestCase):
+    def test_prompt_excludes_personal_biography(self):
+        from src.extract import SYSTEM_PROMPT
+
+        lowered = SYSTEM_PROMPT.lower()
+        self.assertIn("business", lowered)
+        self.assertIn("biograph", lowered)
+
+    def test_address_fields_are_refused_as_registry_owned(self):
+        # A live run spent a model call rediscovering the registered
+        # address. Restating registry data wastes the extraction slot.
+        for field in ("locations", "geographic_presence", "address"):
+            _, reason = run_verify(
+                candidate(
+                    field=field,
+                    quote="We are a Norwegian investment company founded in 2005.",
+                )
+            )
+            self.assertIn("registry", reason, field)
+
+    def test_address_fields_are_not_even_offered(self):
+        self.assertNotIn("locations", EXTRACTABLE_FIELDS)
+        self.assertNotIn("geographic_presence", EXTRACTABLE_FIELDS)
+
+    def test_extractable_fields_are_all_non_registry(self):
+        # Every offered field must be something Brreg cannot supply,
+        # otherwise the model is being invited to repeat it.
+        self.assertEqual(set(EXTRACTABLE_FIELDS) & RESERVED_FIELDS, set())
+
+    def test_extraction_vocabulary_targets_new_information(self):
+        for field in (
+            "business_summary",
+            "products",
+            "services",
+            "target_customers",
+            "recent_developments",
+        ):
+            self.assertIn(field, EXTRACTABLE_FIELDS)
+
+    def test_prompt_warns_against_repeating_registry_data(self):
+        from src.extract import SYSTEM_PROMPT
+
+        self.assertIn("registry", SYSTEM_PROMPT.lower())
+        self.assertIn("address", SYSTEM_PROMPT.lower())
+
     def test_registry_owned_fields_are_refused(self):
         # The model must never be able to restate identity.
         for reserved in sorted(RESERVED_FIELDS)[:8]:
@@ -141,7 +187,102 @@ class FieldAllowlistTests(unittest.TestCase):
         self.assertEqual(reason, "empty value")
 
 
-class SchemaTests(unittest.TestCase):
+class RedundancyTests(unittest.TestCase):
+    """Directory sites reprint registry fields; that is not a discovery."""
+
+    def test_fact_restating_the_registered_address_is_refused(self):
+        _, reason = run_verify(
+            candidate(
+                field="business_summary",
+                value="The company is registered at Bekkeliveien 5, 3470 Slemmestad",
+                quote="We are a Norwegian investment company founded in 2005.",
+            ),
+            registry_values=("Bekkeliveien 5, 3470 Slemmestad",),
+        )
+        self.assertIn("repeats a value already sourced", reason)
+
+    def test_genuinely_new_fact_survives_alongside_registry_values(self):
+        fact, reason = run_verify(
+            candidate(
+                field="business_summary",
+                value="Founded in summer 2004 by a former banking programmer",
+                quote="We are a Norwegian investment company founded in 2005.",
+            ),
+            registry_values=("Bekkeliveien 5, 3470 Slemmestad",),
+        )
+        self.assertIsNone(reason)
+        self.assertIsNotNone(fact)
+
+    def test_near_duplicate_facts_are_refused(self):
+        # A live run produced both "attracting visitors from 148
+        # countries" and "Visitors have come from 148 countries".
+        first = candidate(
+            field="services",
+            value="The website hosts railway pictures attracting visitors from 148 countries",
+            quote="We are a Norwegian investment company founded in 2005.",
+        )
+        fact, reason = run_verify(first)
+        self.assertIsNone(reason)
+
+        second = candidate(
+            field="services",
+            value="Visitors have come from 148 countries to the website",
+            quote="We are a Norwegian investment company founded in 2005.",
+        )
+        fact2, reason2 = run_verify(second, accepted=[fact])
+        self.assertIsNone(fact2)
+        self.assertIn("duplicates", reason2)
+
+    def test_different_facts_are_both_kept(self):
+        a = candidate(
+            field="services",
+            value="Runs a large collection of Norwegian railway photographs",
+            quote="We are a Norwegian investment company founded in 2005.",
+        )
+        fact, _ = run_verify(a)
+        b = candidate(
+            field="services",
+            value="Serves corporate clients across the Nordic region",
+            quote="We are a Norwegian investment company founded in 2005.",
+        )
+        fact2, reason2 = run_verify(b, accepted=[fact])
+        self.assertIsNone(reason2)
+        self.assertIsNotNone(fact2)
+
+    def test_already_accepted_facts_block_cross_page_duplicates(self):
+        # Two directories stating the same thing must publish it once.
+        prior = run_verify(
+            candidate(
+                field="services",
+                value="IT consulting, database development, courses and "
+                      "translation services",
+                quote="We are a Norwegian investment company founded in 2005.",
+            )
+        )[0]
+        self.assertIsNotNone(prior)
+
+        fact, reason = run_verify(
+            candidate(
+                field="services",
+                value="IT consulting, database development, courses and "
+                      "translation services offered nationwide",
+                quote="We are a Norwegian investment company founded in 2005.",
+            ),
+            accepted=[prior],
+        )
+        self.assertIsNone(fact)
+        self.assertIn("duplicates", reason)
+
+    def test_short_values_do_not_trigger_false_matches(self):
+        # A two-letter registry token must not match everything.
+        fact, reason = run_verify(
+            candidate(field="business_summary", value="Operates nationally"),
+            registry_values=("AS",),
+        )
+        self.assertIsNone(reason)
+
+
+class ValidateAndSchemaTests(unittest.TestCase):
     def test_every_object_sets_additional_properties_false(self):
         # The API requires this on every object in a structured schema.
         def walk(node):

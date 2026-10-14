@@ -149,6 +149,7 @@ class OpenAICompatibleBackend:
         model: str = DEFAULT_MODEL,
         thinking: bool = False,
         timeout: int = DEFAULT_TIMEOUT,
+        temperature: float = 0.0,
     ):
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
@@ -158,6 +159,14 @@ class OpenAICompatibleBackend:
         # not a visible reasoning trace, so it defaults off.
         self.thinking = thinking
         self.timeout = timeout
+        # Low temperature matters here: the model must copy a quote
+        # verbatim, and at 1.0 it paraphrases, so the quote fails
+        # verification and a true fact is discarded. NVIDIA's hosted
+        # schemas declare an exclusive minimum of zero for temperature on
+        # some models, so a rejection demotes this to 1.0 permanently.
+        self.temperature = temperature
+        self.fallback_temperature = 1.0
+        self._temperature_rejected = False
         # Token counts from the most recent call, so callers can report
         # what a paid request cost.
         self.last_usage: dict[str, Any] = {}
@@ -228,6 +237,7 @@ class OpenAICompatibleBackend:
         system: str,
         user: str,
         max_tokens: int,
+        temperature: float,
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "model": self.model,
@@ -236,10 +246,7 @@ class OpenAICompatibleBackend:
                 {"role": "user", "content": user},
             ],
             "max_tokens": max_tokens,
-            # NVIDIA recommends these for Nemotron, and hosted schemas
-            # declare temperature with an exclusive minimum of zero, so
-            # requesting a temperature of 0 can be rejected outright.
-            "temperature": 1.0,
+            "temperature": temperature,
             "top_p": 0.95,
             "stream": False,
         }
@@ -249,14 +256,35 @@ class OpenAICompatibleBackend:
 
         return payload
 
-    def _completion(
+    def _is_parameter_rejection(self, error: CallFailed) -> bool:
+        """Whether a failure is about the temperature value specifically.
+
+        Kept narrow on purpose. A 400 can equally mean the endpoint
+        rejected ``response_format``, and treating that as a temperature
+        problem would burn the schema fallback on the wrong axis.
+        """
+        text = str(error).lower()
+
+        if any(
+            marker in text
+            for marker in ("response_format", "json_schema", "guided_json")
+        ):
+            return False
+
+        return "temperature" in text or any(
+            marker in text
+            for marker in ("greater than", "exclusive", "less than")
+        )
+
+    def _completion_once(
         self,
         system: str,
         user: str,
         max_tokens: int,
-        extra: dict[str, Any] | None = None,
+        extra: dict[str, Any] | None,
+        temperature: float,
     ) -> Completion:
-        payload = self._base_payload(system, user, max_tokens)
+        payload = self._base_payload(system, user, max_tokens, temperature)
         if extra:
             payload.update(extra)
 
@@ -285,6 +313,28 @@ class OpenAICompatibleBackend:
             finish_reason=finish,
             reasoning=message.get("reasoning_content"),
         )
+
+    def _completion(
+        self,
+        system: str,
+        user: str,
+        max_tokens: int,
+        extra: dict[str, Any] | None = None,
+    ) -> Completion:
+        try:
+            return self._completion_once(
+                system, user, max_tokens, extra, self.temperature
+            )
+        except CallFailed as exc:
+            if self._temperature_rejected or not self._is_parameter_rejection(exc):
+                raise
+            # The model will not accept this temperature. Remember that
+            # for the rest of the session so it is probed only once.
+            self._temperature_rejected = True
+            self.temperature = self.fallback_temperature
+            return self._completion_once(
+                system, user, max_tokens, extra, self.fallback_temperature
+            )
 
     # ---- public surface ----------------------------------------------
     def complete_json(

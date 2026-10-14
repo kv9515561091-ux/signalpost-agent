@@ -109,9 +109,9 @@ class RequestShapeTests(unittest.TestCase):
             "https://integrate.api.nvidia.com/v1/chat/completions",
         )
 
-    def test_never_sends_temperature_zero(self):
-        # Hosted schemas declare an exclusive minimum of zero, so 0 can
-        # be rejected outright.
+    def test_prefers_a_deterministic_temperature(self):
+        # A verbatim quote must be copied, not paraphrased; at 1.0 the
+        # model rewrites it and a true fact is then discarded.
         backend = self._backend()
         with patch("src.llm_openai.requests.post") as post:
             post.return_value.status_code = 200
@@ -120,8 +120,48 @@ class RequestShapeTests(unittest.TestCase):
             backend.complete_text(system="s", user="u")
 
         payload = post.call_args.kwargs["json"]
-        self.assertEqual(payload["temperature"], 1.0)
+        self.assertEqual(payload["temperature"], 0.0)
         self.assertEqual(payload["top_p"], 0.95)
+
+    def test_falls_back_to_one_if_temperature_is_rejected(self):
+        backend = self._backend()
+
+        def ok_response(content="ok"):
+            response = MagicMock()
+            response.status_code = 200
+            response.json.return_value = {
+                "choices": [
+                    {
+                        "finish_reason": "stop",
+                        "message": {"content": content},
+                    }
+                ],
+                "usage": {},
+            }
+            response.raise_for_status = lambda: None
+            return response
+
+        rejected = MagicMock()
+        rejected.status_code = 400
+        rejected.text = "temperature must be greater than 0"
+        rejected.raise_for_status = MagicMock(
+            side_effect=__import__("requests").HTTPError("400")
+        )
+
+        post = MagicMock(side_effect=[rejected, ok_response()])
+        with patch("src.llm_openai.requests.post", post):
+            self.assertEqual(backend.complete_text(system="s", user="u"), "ok")
+
+        self.assertEqual(
+            post.call_args_list[-1].kwargs["json"]["temperature"], 1.0
+        )
+
+        # The rejection is remembered, so it is never probed twice.
+        with patch("src.llm_openai.requests.post") as post2:
+            post2.return_value = ok_response()
+            backend.complete_text(system="s", user="u")
+        self.assertEqual(post2.call_args.kwargs["json"]["temperature"], 1.0)
+        self.assertEqual(post2.call_count, 1)
 
     def test_disables_thinking_by_default(self):
         backend = self._backend()
@@ -184,7 +224,7 @@ class JsonFallbackTests(unittest.TestCase):
         backend = self._backend()
         bad = MagicMock()
         bad.status_code = 400
-        bad.text = "response_format type is unavailable"
+        bad.text = "response_format type is unavailable for this model"
         bad.raise_for_status = MagicMock(
             side_effect=__import__("requests").HTTPError("400 Client Error")
         )
