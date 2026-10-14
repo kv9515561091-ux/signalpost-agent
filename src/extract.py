@@ -174,6 +174,22 @@ Rules:
 - Prefer specific, verifiable statements over vague marketing language.
 - If the page describes a service, product or event, date it using the
   date on the page if one is given.
+
+Choosing the `field`:
+- `business_summary` is the right field for a great many facts. When in
+  doubt between a broad field and a narrow one, prefer `business_summary`.
+  A statement filed under the wrong narrow field is worse than one filed
+  under the broad one, because a reader sees `products` and expects a
+  product.
+- Do not classify a headline, a news item or a link label as `products`,
+  `services`, `partnerships` or `recent_developments` unless the text
+  actually states what the product is, what the service does, who the
+  partners are, or what happened. A title like "Equinor and Shell
+  partner on the Bay du Nord project" is a `recent_developments` item at
+  best; "Analyst call" is not a fact about the business at all.
+- If the page genuinely only supports `business_summary`, filing
+  everything there is correct. Do not stretch a sentence into a narrow
+  field to make the output look varied.
 """
 
 _DATE = re.compile(r"\b(\d{4})-(\d{2})-(\d{2})\b")
