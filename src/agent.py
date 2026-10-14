@@ -495,6 +495,18 @@ def reconcile_evidence(evidence: list[Evidence]) -> list[dict[str, Any]]:
     return conflict_report(reconcile_all(claims))
 
 
+# Domains whose content the registry already supplied through its API.
+# Fetching their HTML spends a request to recover less structured data.
+REGISTRY_DOMAINS_FOR_FETCH = frozenset({
+    "brreg.no",
+    "virksomhet.brreg.no",
+    "w2.brreg.no",
+    "data.brreg.no",
+    "regjeringen.no",
+    "forvaltningsdatabasen.sikt.no",
+})
+
+
 def _describe_fetch_failure(exc: Exception) -> str:
     """Turn a transport exception into something actionable.
 
@@ -522,6 +534,11 @@ def _describe_fetch_failure(exc: Exception) -> str:
 
     if isinstance(exc, requests.Timeout):
         return "timed out"
+    # SSLError subclasses ConnectionError, so it must be checked first.
+    # A TLS failure means the site's certificate or handshake is broken,
+    # which is a different problem from a host refusing connections.
+    if isinstance(exc, requests.exceptions.SSLError):
+        return "TLS/SSL handshake failed (the site may block automated clients)"
     if isinstance(exc, requests.ConnectionError):
         return "connection failed"
     if isinstance(exc, requests.RequestException):
@@ -552,6 +569,10 @@ def _apply_extraction(
         # Tier 7 pages cannot support a published fact; fetching them
         # would cost a request and a model call for nothing.
         if source.tier <= 6
+        # Brreg is already read through the API, with better structure
+        # and cleaner provenance than its HTML. Re-fetching a registry
+        # search page spends a request to recover data already held.
+        and source.domain not in REGISTRY_DOMAINS_FOR_FETCH
     ][:max_sources]
 
     if not candidates:

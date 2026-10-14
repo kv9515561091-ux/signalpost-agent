@@ -119,6 +119,11 @@ LISTING_PATH_HINTS = (
     "/sok", "/soek", "/search", "/bransjesok", "/bransjesøk",
     "/produkter", "/kategori", "/liste", "/resultater", "/find",
     "/sted", "/by", "/region",
+    # Observed in the live corpus: firmadatabasen.no/kommune/bergen/
+    # selskaper lists every company in a municipality. Without this the
+    # page reads as being about one company, because its URL path does
+    # contain a real name.
+    "/kommune", "/kommuner", "/fylke", "/land", "/bransje",
 )
 
 
@@ -274,11 +279,16 @@ def confidence_for(tier: int, *, corroborated: bool = False) -> float:
 
 
 def rank(sources: list[dict]) -> list[dict]:
-    """Order sources most-authoritative first, stably."""
+    """Order sources most-authoritative first, stably.
+
+    Tier numbers increase as authority decreases, so sorting ascending on
+    the tier puts the registry first and the unverified web last.
+    Verified sources precede unverified ones within a tier.
+    """
     return sorted(
         sources,
         key=lambda s: (
-            -int(s.get("tier", TIER_UNVERIFIED)),
+            int(s.get("tier", TIER_UNVERIFIED)),
             not bool(s.get("identity_verified")),
         ),
     )

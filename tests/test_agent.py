@@ -316,6 +316,19 @@ class FetchFailureReportingTests(unittest.TestCase):
             requests.HTTPError(response=self._response(503))
         ))
 
+    def test_tls_failure_is_distinguished_from_a_refused_connection(self):
+        import requests
+
+        from src.agent import _describe_fetch_failure
+
+        # SSLError subclasses ConnectionError, so ordering matters: a TLS
+        # failure is a different problem from a host that is down.
+        message = _describe_fetch_failure(
+            requests.exceptions.SSLError("handshake failed")
+        )
+        self.assertIn("TLS", message)
+        self.assertNotEqual(message, "connection failed")
+
     def test_timeout_and_connection_error_are_named(self):
         import requests
 

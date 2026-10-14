@@ -4,6 +4,7 @@ import unittest
 
 from src.sources import (
     TIER_DIRECTORY,
+    TIER_UNVERIFIED,
     TIER_OFFICIAL_REGISTRY,
     TIER_UNVERIFIED,
     classify,
@@ -101,6 +102,82 @@ class ForeignIdentifierTests(unittest.TestCase):
         )
         self.assertEqual(result.org_number_in_path, "934551435")
         self.assertIn("991205763", result.foreign_numbers)
+
+
+class RankingTests(unittest.TestCase):
+    """Authority must come first: this decides what gets fetched."""
+
+    def test_registry_ranks_before_directory(self):
+        from src.sources import rank
+
+        ordered = rank([
+            {"url": "https://purehelp.no/x", "tier": 6},
+            {"url": "https://data.brreg.no/x", "tier": 1},
+            {"url": "https://example.no", "tier": 4},
+        ])
+        self.assertEqual(
+            [s["tier"] for s in ordered], [1, 4, 6]
+        )
+
+    def test_tiers_are_ascending(self):
+        # Tier numbers increase as authority decreases, so the output
+        # must be non-decreasing. Sorting on -tier here silently reversed
+        # the whole order and made extraction read the worst sources.
+        from src.sources import rank
+
+        ordered = rank([{"tier": t} for t in (7, 2, 5, 1, 4, 6, 3)])
+        tiers = [s["tier"] for s in ordered]
+        self.assertEqual(tiers, sorted(tiers))
+        self.assertEqual(tiers[0], 1)
+        self.assertEqual(tiers[-1], 7)
+
+    def test_verified_precedes_unverified_within_a_tier(self):
+        from src.sources import rank
+
+        ordered = rank([
+            {"url": "a", "tier": 4, "identity_verified": False},
+            {"url": "b", "tier": 4, "identity_verified": True},
+        ])
+        self.assertEqual(ordered[0]["url"], "b")
+
+    def test_ranking_is_stable(self):
+        from src.sources import rank
+
+        items = [{"url": "a", "tier": 3}, {"url": "b", "tier": 3}]
+        self.assertEqual([s["url"] for s in rank(items)], ["a", "b"])
+
+    def test_missing_tier_is_treated_as_least_authoritative(self):
+        # Defaulting a missing tier to 7 means an unrecognised source can
+        # never outrank a real one.
+        from src.sources import rank
+
+        ordered = rank([
+            {"url": "unknown"},
+            {"url": "official", "tier": 1},
+        ])
+        self.assertEqual(ordered[0]["url"], "official")
+        self.assertEqual(ordered[-1]["url"], "unknown")
+
+    def test_missing_tier_never_outranks_a_directory(self):
+        from src.sources import rank
+
+        ordered = rank([
+            {"url": "unknown"},
+            {"url": "directory", "tier": 6},
+        ])
+        self.assertEqual(ordered[0]["url"], "directory")
+
+
+class MunicipalityListingTests(unittest.TestCase):
+    """A page listing every company in a city is not about one company."""
+
+    def test_municipality_index_is_a_listing(self):
+        result = classify(
+            "https://firmadatabasen.no/kommune/bergen/selskaper",
+            "916627939",
+        )
+        self.assertTrue(result.is_listing_page)
+        self.assertEqual(result.tier, TIER_UNVERIFIED)
 
 
 class ConfidenceTests(unittest.TestCase):

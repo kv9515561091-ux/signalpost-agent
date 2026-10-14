@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from src.identity import CompanyIdentity, verify
-from src.sources import confidence_for, rank
+from src.sources import TIER_FIRST_PARTY, confidence_for, get_domain, rank
 
 DEFAULT_MAX_RESULTS = 10
 
@@ -38,6 +38,49 @@ def _search(provider, query: str, max_results: int) -> list[dict]:
     return provider(query, max_results)
 
 
+def _absolute(url: str) -> str:
+    if not url:
+        return ""
+    return url if url.startswith(("http://", "https://")) else f"https://{url}"
+
+
+def _official_website_source(
+    identity: CompanyIdentity,
+    retrieved_at: str,
+) -> dict[str, Any] | None:
+    """The company's own registered site, as a first-party source.
+
+    Brreg already asserted this URL belongs to the entity, so identity is
+    established by definition. It is not fetched here: the content is
+    read later, only if the extraction stage actually needs it.
+    """
+    website = _absolute(identity.registered_website or "")
+    if not website:
+        return None
+
+    # A government directory such as "regjeringen.no/aid" is the
+    # company's site, but it hosts hundreds of unrelated pages and is
+    # already covered by the registry.
+    domain = get_domain(website)
+    if not domain:
+        return None
+
+    return {
+        "url": website,
+        "title": identity.name,
+        "domain": domain,
+        "tier": TIER_FIRST_PARTY,
+        "source_type": "official_company_website",
+        "confidence": confidence_for(TIER_FIRST_PARTY),
+        "identity_verified": True,
+        "identity_basis": "registered_website",
+        "identity_signals": {"registered_domain_match": True},
+        "identity_reasons": [],
+        "query": None,
+        "retrieved_at": retrieved_at,
+    }
+
+
 def discover_sources(
     identity: CompanyIdentity,
     provider,
@@ -45,6 +88,11 @@ def discover_sources(
     max_queries: int = 2,
 ) -> list[dict[str, Any]]:
     """Find, verify and rank public sources for a company.
+
+    The company's own registered website is included first and ranked as
+    first-party. It is the only source that speaks about the business
+    itself — what it sells, who its customers are — rather than
+    restating registry fields, and search often fails to surface it.
 
     Args:
         identity: The canonical entity from Brreg.
@@ -59,6 +107,13 @@ def discover_sources(
     """
     accepted: list[dict[str, Any]] = []
     seen_urls: set[str] = set()
+    retrieved_at = datetime.now(timezone.utc).isoformat()
+
+    # ---- the official site, ahead of anything search turns up --------
+    official = _official_website_source(identity, retrieved_at)
+    if official:
+        accepted.append(official)
+        seen_urls.add(official["url"])
 
     for query in build_queries(identity)[:max_queries]:
         try:
