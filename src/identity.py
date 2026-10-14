@@ -265,6 +265,9 @@ def verify(
 
     if identity.postal_code:
         signals["postal_code_match"] = identity.postal_code in page_text
+    else:
+        # Always present, so callers can read it unconditionally.
+        signals["postal_code_match"] = False
 
     # ---- Decision --------------------------------------------------
     verified = False
@@ -313,19 +316,25 @@ def verify(
         ):
             reasons.append("unverified domain with no organization number")
 
+    # Signals are read with .get because not every identity populates
+    # every key: postal_code_match is only set when the registry holds a
+    # postal code, and an entity with no registered address has none.
+    # Indexing directly raised KeyError for exactly those companies.
     score = sum(
-        (
-            1.0 if signals["org_number_in_url_path"] else 0.0,
-            1.0 if signals["org_number_in_registry_query"] else 0.0,
-            0.7 if signals["org_number_on_page"] else 0.0,
-            0.6 if signals["registered_domain_match"] else 0.0,
-            0.4 if signals["exact_name_in_title"] else 0.0,
-            0.3 if signals["exact_name_on_page"] else 0.0,
-            0.3 if signals["name_token_overlap"] else 0.0,
-            0.2 if signals["registered_path_token_match"] else 0.0,
-            0.2 if signals["previous_name_on_page"] else 0.0,
-            0.2 if signals["postal_code_match"] else 0.0,
+        weight
+        for weight, key in (
+            (1.0, "org_number_in_url_path"),
+            (1.0, "org_number_in_registry_query"),
+            (0.7, "org_number_on_page"),
+            (0.6, "registered_domain_match"),
+            (0.4, "exact_name_in_title"),
+            (0.3, "exact_name_on_page"),
+            (0.3, "name_token_overlap"),
+            (0.2, "registered_path_token_match"),
+            (0.2, "previous_name_on_page"),
+            (0.2, "postal_code_match"),
         )
+        if signals.get(key)
     )
 
     return IdentityVerdict(

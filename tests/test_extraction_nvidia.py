@@ -12,6 +12,8 @@ import json
 import unittest
 from unittest.mock import MagicMock, patch
 
+from support import disable_llm_pacing, restore_llm_pacing
+
 PAGE = """
 - G- GROUP AS
 About us
@@ -40,6 +42,15 @@ def nvidia_response(payload, finish="stop"):
     }
     response.raise_for_status = lambda: None
     return response
+
+
+def setUpModule():
+    global _PACING
+    _PACING = disable_llm_pacing()
+
+
+def tearDownModule():
+    restore_llm_pacing(_PACING)
 
 
 class NvidiaExtractionTests(unittest.TestCase):

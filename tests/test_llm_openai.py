@@ -10,6 +10,8 @@ JSON must be handled without ever guessing at the content.
 import unittest
 from unittest.mock import MagicMock, patch
 
+from src.ratelimit import RateLimiter
+from support import disable_llm_pacing, restore_llm_pacing
 from src.llm_openai import (
     CallFailed,
     OpenAICompatibleBackend,
@@ -17,6 +19,15 @@ from src.llm_openai import (
     Truncated,
     parse_json_response,
 )
+
+
+def setUpModule():
+    global _PACING
+    _PACING = disable_llm_pacing()
+
+
+def tearDownModule():
+    restore_llm_pacing(_PACING)
 
 
 class BalancedObjectTests(unittest.TestCase):
@@ -177,7 +188,10 @@ class RequestShapeTests(unittest.TestCase):
 
     def test_thinking_can_be_enabled(self):
         backend = OpenAICompatibleBackend(
-            api_key="k", model="m", thinking=True
+            api_key="k",
+            model="m",
+            thinking=True,
+            rate_limiter=RateLimiter(rpm=0),
         )
         with patch("src.llm_openai.requests.post") as post:
             post.return_value.status_code = 200
@@ -202,7 +216,9 @@ class RequestShapeTests(unittest.TestCase):
 
 class JsonFallbackTests(unittest.TestCase):
     def _backend(self):
-        return OpenAICompatibleBackend(api_key="k", model="m")
+        return OpenAICompatibleBackend(
+            api_key="k", model="m", rate_limiter=RateLimiter(rpm=0)
+        )
 
     def _respond(self, responses):
         post = MagicMock()

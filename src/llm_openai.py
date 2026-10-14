@@ -34,6 +34,7 @@ from typing import Any
 import requests
 
 from src.http import RETRY_BACKOFF_SECONDS, time
+from src.ratelimit import RateLimiter, limiter
 from src.request_tracker import request_tracker
 
 DEFAULT_BASE_URL = "https://integrate.api.nvidia.com/v1"
@@ -150,6 +151,7 @@ class OpenAICompatibleBackend:
         thinking: bool = False,
         timeout: int = DEFAULT_TIMEOUT,
         temperature: float = 0.0,
+        rate_limiter: RateLimiter | None = None,
     ):
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
@@ -165,6 +167,9 @@ class OpenAICompatibleBackend:
         # schemas declare an exclusive minimum of zero for temperature on
         # some models, so a rejection demotes this to 1.0 permanently.
         self.temperature = temperature
+        # Shared process-wide by default so two backends cannot together
+        # exceed the ceiling.
+        self.rate_limiter = rate_limiter if rate_limiter is not None else limiter
         self.fallback_temperature = 1.0
         self._temperature_rejected = False
         # Token counts from the most recent call, so callers can report
@@ -183,6 +188,9 @@ class OpenAICompatibleBackend:
 
         for attempt in range(3):
             try:
+                # Pace requests up front. Discovering the ceiling by
+                # hitting it wastes the call that trips it.
+                self.rate_limiter.acquire()
                 request_tracker.record()
                 response = requests.post(
                     url,

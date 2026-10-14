@@ -32,6 +32,7 @@ def fetch_json(
     timeout: int = DEFAULT_TIMEOUT,
     attempts: int = DEFAULT_ATTEMPTS,
     accept_missing: bool = False,
+    headers: dict[str, str] | None = None,
 ) -> Any:
     """GET ``url`` and decode the JSON body.
 
@@ -39,6 +40,9 @@ def fetch_json(
         accept_missing: When ``True``, a 404 yields ``None`` instead of
             raising. Absence of a record is a legitimate answer for
             annual accounts and roles.
+        headers: Extra headers merged over the default ``Accept``. The
+            search API authenticates this way; credentials are never
+            placed in the URL, because URLs get written to the cache.
 
     Raises:
         NotFound: On 404 when ``accept_missing`` is ``False``.
@@ -46,13 +50,18 @@ def fetch_json(
     """
     last_error: Exception | None = None
 
+    request_headers = {"Accept": "application/json"}
+    if headers:
+        request_headers.update(headers)
+
     for attempt in range(attempts):
         try:
             request_tracker.record()
+
             response = requests.get(
                 url,
                 timeout=timeout,
-                headers={"Accept": "application/json"},
+                headers=request_headers,
             )
 
             if response.status_code == 404:

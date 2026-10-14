@@ -30,6 +30,11 @@ from src.http import ByteResponse, fetch_bytes, fetch_json
 DEFAULT_CACHE_DIR = Path("data/cache")
 DEFAULT_TTL_SECONDS = 6 * 60 * 60  # 6 hours
 
+# Search results go stale faster than registry records: a page's wording
+# and ranking change, while a company's legal identity does not. An hour
+# still covers a full batch run and any immediate re-run.
+SEARCH_TTL_SECONDS = 60 * 60
+
 
 @dataclass
 class CacheEntry:
@@ -144,6 +149,23 @@ class DiskCache:
 # so sharing one instance also prevents fetching the same org twice.
 cache = DiskCache()
 
+# Caches keyed by (directory, ttl). Constructing a fresh DiskCache per
+# call would work but resets the hit/miss counters, so a run using a
+# non-default TTL would report nothing.
+_caches: dict[tuple[str, int], DiskCache] = {
+    (str(cache.directory), cache.ttl_seconds): cache,
+}
+
+
+def cache_for(directory: str | Path, ttl_seconds: int) -> DiskCache:
+    """Return the shared cache for a directory and TTL, creating it once."""
+    key = (str(directory), ttl_seconds)
+    existing = _caches.get(key)
+    if existing is None:
+        existing = DiskCache(directory, ttl_seconds)
+        _caches[key] = existing
+    return existing
+
 
 def _now_iso() -> str:
     from datetime import datetime, timezone
@@ -156,14 +178,26 @@ def cached_json(
     *,
     accept_missing: bool = False,
     ttl_seconds: int | None = None,
+    headers: dict[str, str] | None = None,
 ) -> tuple[Any, dict[str, Any]]:
     """GET ``url`` as JSON, consulting the cache first.
+
+    Args:
+        headers: Extra request headers, e.g. API credentials. These are
+            sent but never persisted: only the URL reaches disk.
 
     Returns ``(body, meta)`` where ``meta`` records whether the body came
     from cache, whether it was stale, and when it was originally
     retrieved, so provenance still points at the real source.
+
+    Note:
+        The caller must pass a URL that fully identifies the request,
+        query parameters included. This function keys on the URL alone,
+        so an endpoint that varies results by query string — as the
+        search API does — must be given its expanded URL, or every query
+        will read the same entry.
     """
-    active = cache if ttl_seconds is None else DiskCache(
+    active = cache if ttl_seconds is None else cache_for(
         cache.directory, ttl_seconds
     )
 
@@ -178,7 +212,9 @@ def cached_json(
         }
 
     try:
-        body = fetch_json(url, accept_missing=accept_missing)
+        body = fetch_json(
+            url, accept_missing=accept_missing, headers=headers
+        )
     except Exception:  # noqa: BLE001 - fall back rather than fail outright
         stale = active.get_stale(url)
         if stale is not None:
@@ -216,8 +252,10 @@ def cached_page(
     """
     import base64
 
-    active = cache if ttl_seconds == DEFAULT_TTL_SECONDS else DiskCache(
-        cache.directory, ttl_seconds
+    active = (
+        cache
+        if ttl_seconds == DEFAULT_TTL_SECONDS
+        else cache_for(cache.directory, ttl_seconds)
     )
 
     hit = active.get_fresh(url)

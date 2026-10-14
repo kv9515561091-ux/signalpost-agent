@@ -17,6 +17,28 @@ import unittest
 from pathlib import Path
 
 
+def disable_llm_pacing():
+    """Disable request pacing for the duration of a test module.
+
+    The limiter exists to stay under a real provider's quota. Sleeping
+    between mocked calls turns a ten-second suite into a minute without
+    testing anything, so every module that exercises the LLM path turns
+    it off.
+    """
+    from src import llm_openai
+    from src.ratelimit import RateLimiter
+
+    original = llm_openai.limiter
+    llm_openai.limiter = RateLimiter(rpm=0)
+    return original
+
+
+def restore_llm_pacing(original):
+    from src import llm_openai
+
+    llm_openai.limiter = original
+
+
 class IsolatedCacheMixin:
     """Point the module-level cache at a throwaway directory."""
 

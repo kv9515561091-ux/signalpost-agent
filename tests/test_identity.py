@@ -177,6 +177,63 @@ class AcceptanceTests(unittest.TestCase):
         self.assertIn("983887457", " ".join(verdict.reasons))
 
 
+class SparseIdentityTests(unittest.TestCase):
+    """An entity with no registered address must still verify cleanly."""
+
+    def test_verification_survives_a_missing_postal_code(self):
+        # postal_code_match used to be indexed unconditionally in the
+        # scoring dict while only being set when the registry held a
+        # postal code, so every address-less company raised KeyError.
+        sparse = identity(
+            company_number="923609016",
+            name="EQUINOR ASA",
+            address=None,
+            postal_code=None,
+        )
+        verdict = verify(
+            {
+                "url": "https://bedri.no/bedrift/923609016",
+                "title": "Equinor",
+                "snippet": "Org.nr 923609016",
+            },
+            sparse,
+        )
+        self.assertTrue(verdict.verified)
+        self.assertIn("postal_code_match", verdict.signals)
+        self.assertFalse(verdict.signals["postal_code_match"])
+
+    def test_every_signal_key_is_always_present(self):
+        sparse = identity(address=None, postal_code=None)
+        verdict = verify(
+            {"url": "https://example.no/x", "title": "-G- GROUP AS"},
+            sparse,
+        )
+        for key in (
+            "org_number_in_url_path",
+            "org_number_in_registry_query",
+            "org_number_on_page",
+            "registered_domain_match",
+            "exact_name_in_title",
+            "exact_name_on_page",
+            "name_token_overlap",
+            "registered_path_token_match",
+            "previous_name_on_page",
+            "postal_code_match",
+        ):
+            self.assertIn(key, verdict.signals, key)
+
+    def test_postal_code_still_counts_when_known(self):
+        full = identity(postal_code="0671")
+        verdict = verify(
+            {
+                "url": "https://bedri.no/bedrift/989061593",
+                "snippet": "0671 Oslo",
+            },
+            full,
+        )
+        self.assertTrue(verdict.signals["postal_code_match"])
+
+
 class RealSearchResultTests(unittest.TestCase):
     """Replay the captured corpus end to end."""
 
