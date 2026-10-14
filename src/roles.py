@@ -152,7 +152,11 @@ def get_roles(company_number: str) -> dict[str, Any]:
         for record in group_records:
             record["group_code"] = group_type
             record["group"] = ROLE_GROUPS_OF_INTEREST.get(
-                group_type, (group.get("type") or {}).get("beskrivelse")
+                # Brreg omits the group code on some records; fall back
+                # to whatever description is present rather than looking
+                # up None.
+                group_type or "",
+                (group.get("type") or {}).get("beskrivelse"),
             )
             record["group_changed_at"] = group.get("sistEndret")
 

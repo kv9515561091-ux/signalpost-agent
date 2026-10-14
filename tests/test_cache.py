@@ -10,10 +10,10 @@ return yesterday's data as though it were today's.
 import unittest
 import unittest.mock
 
+import requests
 from support import CacheTestCase
 
-from src import cache as cache_module
-from src.cache import DiskCache, cached_json, cache
+from src.cache import DiskCache, cache, cached_json
 from src.http import NotFound
 
 
@@ -116,10 +116,13 @@ class CachedJsonTests(CacheTestCase):
 
     def test_transport_failure_is_not_cached_as_empty(self):
         with unittest.mock.patch(
-            "src.cache.fetch_json", side_effect=Exception("timeout")
+            "src.cache.fetch_json",
+            side_effect=requests.RequestException("timeout"),
         ):
-            with self.assertRaises(Exception):
-                cached_json("https://x/1")
+                # An unrecoverable fetch with no cached entry must raise,
+                # not silently yield None as though nothing existed.
+                with self.assertRaises(requests.RequestException):
+                    cached_json("https://x/1")
         self.assertIsNone(cache.get_fresh("https://x/1"))
 
 

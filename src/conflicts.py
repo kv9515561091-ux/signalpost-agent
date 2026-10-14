@@ -11,8 +11,10 @@ otherwise both are published and the disagreement is reported.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Any, Iterable
+from collections.abc import Iterable
+from dataclasses import dataclass
+from dataclasses import field as dataclass_field
+from typing import Any
 
 from src.text import fold
 
@@ -67,7 +69,7 @@ class Resolution:
     field: str
     value: Any
     winner: FieldValue | None
-    claims: list[FieldValue] = field(default_factory=list)
+    claims: list[FieldValue] = dataclass_field(default_factory=list)
     conflict: Conflict | None = None
 
     @property

@@ -166,8 +166,10 @@ def _year_over_year(years: list[dict[str, Any]]) -> None:
         key=lambda y: y["fiscal_year"],
     )
 
-    for previous, current in zip(ordered, ordered[1:]):
-        current["revenue_growth_pct"] = _ratio(
+# Not strict: consecutive-year pairs come from a list sliced against
+    # itself, so the lengths differ by one by construction.
+    for previous, current in zip(ordered, ordered[1:], strict=False):
+            current["revenue_growth_pct"] = _ratio(
             current.get("revenue") - previous["revenue"]
             if current.get("revenue") is not None
             else None,
@@ -190,6 +192,9 @@ def get_financials(company_number: str, max_years: int = 5) -> dict[str, Any]:
     url = _accounts_url(org_number)
     retrieved_at = datetime.now(timezone.utc).isoformat()
 
+    # Annotated because the two branches assign incompatible types, and
+    # mypy is right to say so: this is a str-or-absent field, not a str.
+    fetch_error: str | None
     try:
         accounts = _fetch_accounts(org_number)
     except (requests.RequestException, ValueError) as exc:
@@ -217,7 +222,7 @@ def get_financials(company_number: str, max_years: int = 5) -> dict[str, Any]:
         by_period.setdefault(period_end, []).append(account)
 
     years = []
-    for period_end, group in by_period.items():
+    for group in by_period.values():
         statement = _pick_statement(group)
         if not statement:
             continue

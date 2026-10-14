@@ -4,33 +4,33 @@ import unittest
 from unittest.mock import patch
 
 from src import llm
-from src.explain import Explanation, build_deterministic, explain
 from src.agent import CompanyProfile, Evidence, FactRecord, FinancialYear
+from src.explain import Explanation, build_deterministic, explain
 
 
 def profile(**overrides):
-    base = dict(
-        company_number="989061593",
-        company_name="-G- GROUP AS",
-        legal_form="Aksjeselskap",
-        status="aktiv",
-        industry="IT-konsulentvirksomhet",
-        industry_code="62.200",
-        registration_date="2006-01-23",
-        founding_date="2005-10-01",
-        address="c/o Gjørva, Hellerud gårdsvei 5B, 0671 OSLO, Norge",
-        business_description="Investeringer og eiendom.",
-        employee_count=0,
-        employee_count_as_of="2026-09-14",
-        ceo_name="Geir Inge Gjørva",
-        owner_name=None,
-        board_chair_name="Geir Inge Gjørva",
-        board_size=2,
-        auditor_name=None,
-        bankruptcy=False,
-        under_liquidation=False,
-        financial_currency="NOK",
-        financials=[
+    base = {
+        "company_number": "989061593",
+        "company_name": "-G- GROUP AS",
+        "legal_form": "Aksjeselskap",
+        "status": "aktiv",
+        "industry": "IT-konsulentvirksomhet",
+        "industry_code": "62.200",
+        "registration_date": "2006-01-23",
+        "founding_date": "2005-10-01",
+        "address": "c/o Gjørva, Hellerud gårdsvei 5B, 0671 OSLO, Norge",
+        "business_description": "Investeringer og eiendom.",
+        "employee_count": 0,
+        "employee_count_as_of": "2026-09-14",
+        "ceo_name": "Geir Inge Gjørva",
+        "owner_name": None,
+        "board_chair_name": "Geir Inge Gjørva",
+        "board_size": 2,
+        "auditor_name": None,
+        "bankruptcy": False,
+        "under_liquidation": False,
+        "financial_currency": "NOK",
+        "financials": [
             FinancialYear(
                 fiscal_year="2025",
                 currency="NOK",
@@ -40,8 +40,8 @@ def profile(**overrides):
                 total_assets=2949837.0,
             )
         ],
-        sources=["https://data.brreg.no/x"],
-        evidence=[
+        "sources": ["https://data.brreg.no/x"],
+        "evidence": [
             Evidence(
                 field="company_name",
                 value="-G- GROUP AS",
@@ -51,12 +51,12 @@ def profile(**overrides):
                 confidence=1.0,
             )
         ],
-        facts=[],
-        conflicts=[],
-        retrieval_errors=[],
-        extraction_rejected=[],
-        explanation=None,
-    )
+        "facts": [],
+        "conflicts": [],
+        "retrieval_errors": [],
+        "extraction_rejected": [],
+        "explanation": None,
+    }
     base.update(overrides)
     return CompanyProfile(**base)
 

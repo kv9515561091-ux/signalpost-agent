@@ -1,0 +1,18 @@
+# Keep the working tree byte-identical to the repository.
+#
+# Without this, core.autocrlf rewrites LF to CRLF on checkout on Windows
+# and not on Linux. CI asserts no CR bytes, so that gate would describe a
+# Linux tree while saying nothing about the tree it was written on.
+# Check what any given path will get with: git check-attr eol -- <path>
+* text=auto eol=lf
+
+# Generated or binary content must never be line-ending normalised.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.gz binary
+*.whl binary

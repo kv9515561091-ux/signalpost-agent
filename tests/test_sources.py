@@ -4,7 +4,6 @@ import unittest
 
 from src.sources import (
     TIER_DIRECTORY,
-    TIER_UNVERIFIED,
     TIER_OFFICIAL_REGISTRY,
     TIER_UNVERIFIED,
     classify,

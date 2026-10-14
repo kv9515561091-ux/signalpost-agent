@@ -12,12 +12,11 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 import requests
+from support import CacheTestCase
 
 from src.brreg import ENHETSREGISTERET_BASE, _entity_url
 from src.financials import REGNSKAPSREGISTERET_BASE, _accounts_url
 from src.roles import _roles_url
-
-from support import CacheTestCase
 
 ORG = "989061593"
 

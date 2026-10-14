@@ -12,7 +12,6 @@ from src.agent import build_profile, reconcile_evidence, validate_company_number
 from src.evidence import Evidence
 from src.orgnumber import InvalidCompanyNumber
 
-
 COMPANY = {
     "company_number": "989061593",
     "company_name": "-G- GROUP AS",
@@ -350,8 +349,9 @@ class FetchFailureReportingTests(unittest.TestCase):
 
     def test_no_bare_exception_class_names_reach_the_profile(self):
         # "HTTPError" alone was what surfaced from the live run.
-        from src.agent import _describe_fetch_failure
         import requests
+
+        from src.agent import _describe_fetch_failure
 
         for exc in (
             requests.HTTPError(response=self._response(403)),

@@ -44,6 +44,25 @@ _NEGATIVE_PHRASES = (
     "ingen treff", "no such company",
 )
 
+# Evidence weight per signal, highest first. Kept in one table so a signal
+# cannot be recorded without being scored, or scored without being
+# recorded.
+#
+# The score is a ranking aid for borderline cases only. The verdict is
+# decided by the explicit rules in verify(), never by this number.
+_SCORING_WEIGHTS: tuple[tuple[float, str], ...] = (
+    (1.0, "org_number_in_url_path"),
+    (1.0, "org_number_in_registry_query"),
+    (0.7, "org_number_on_page"),
+    (0.6, "registered_domain_match"),
+    (0.4, "exact_name_in_title"),
+    (0.3, "exact_name_on_page"),
+    (0.3, "name_token_overlap"),
+    (0.2, "registered_path_token_match"),
+    (0.2, "previous_name_on_page"),
+    (0.2, "postal_code_match"),
+)
+
 
 @dataclass
 class CompanyIdentity:
@@ -135,7 +154,7 @@ def name_tokens(name: str) -> set[str]:
     Single characters and generic words carry no identifying weight, so
     a one-letter name fragment cannot on its own confirm a match.
     """
-    generic = {"og", "i", "the", "og", "a", "as", "no", "noe", "den", "det"}
+    generic = {"og", "i", "the", "a", "as", "no", "noe", "den", "det"}
     return {
         token
         for token in strip_legal_form(name).split()
@@ -316,31 +335,22 @@ def verify(
         ):
             reasons.append("unverified domain with no organization number")
 
+    # Weights live in one table so a future signal cannot be added to the
+    # dict without being scored, or scored without being reported.
+    #
     # Signals are read with .get because not every identity populates
     # every key: postal_code_match is only set when the registry holds a
     # postal code, and an entity with no registered address has none.
     # Indexing directly raised KeyError for exactly those companies.
-    score = sum(
-        weight
-        for weight, key in (
-            (1.0, "org_number_in_url_path"),
-            (1.0, "org_number_in_registry_query"),
-            (0.7, "org_number_on_page"),
-            (0.6, "registered_domain_match"),
-            (0.4, "exact_name_in_title"),
-            (0.3, "exact_name_on_page"),
-            (0.3, "name_token_overlap"),
-            (0.2, "registered_path_token_match"),
-            (0.2, "previous_name_on_page"),
-            (0.2, "postal_code_match"),
-        )
-        if signals.get(key)
-    )
-
     return IdentityVerdict(
         verified=verified,
         basis=basis,
         signals=signals,
         reasons=reasons,
         classification=classification,
+        score=sum(
+            weight
+            for weight, key in _SCORING_WEIGHTS
+            if signals.get(key)
+        ),
     )

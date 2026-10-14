@@ -11,6 +11,7 @@ or need API keys.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import sys
 
@@ -20,8 +21,8 @@ from src.agent import (
     DEFAULT_MAX_SOURCES,
     build_profile,
 )
-from src.cache import cache
 from src.brreg import CompanyNotFound
+from src.cache import cache
 from src.http import NotFound
 from src.orgnumber import InvalidCompanyNumber
 from src.request_tracker import request_tracker
@@ -220,13 +221,13 @@ def _force_utf8_output() -> None:
     way out — the same corruption the agent exists to eliminate, applied
     to its own output.
     """
-    for stream in (sys.stdout, sys.stderr):
+for stream in (sys.stdout, sys.stderr):
         reconfigure = getattr(stream, "reconfigure", None)
         if reconfigure is not None:
-            try:
-                reconfigure(encoding="utf-8", errors="replace")
-            except (ValueError, OSError):  # pragma: no cover
-                pass
+                # A detached or already-closed stream cannot be
+                # reconfigured, and that must not stop the agent running.
+                with contextlib.suppress(ValueError, OSError):
+                    reconfigure(encoding="utf-8", errors="replace")
 
 
 def _check_setup() -> int:

@@ -28,8 +28,9 @@ from src.brreg import get_company
 from src.conflicts import FieldValue, conflict_report, reconcile_all
 from src.crawl import DEFAULT_MAX_CRAWL_LINKS as _DEFAULT_MAX_CRAWL_LINKS
 from src.discovery import discover_sources
-from src.explain import explain
 from src.evidence import Evidence, FactRecord
+from src.explain import explain
+from src.extract import ExtractedFact
 from src.financials import get_financials
 from src.identity import CompanyIdentity
 from src.orgnumber import InvalidCompanyNumber, normalize, validate
@@ -245,19 +246,19 @@ def _registry_evidence(company: dict[str, Any]) -> list[Evidence]:
         "company_number", company.get("company_number"),
         source_url=url, retrieved_at=at,
         evidence_text=f"Enhetsregisteret org.nr {company.get('company_number')}",
-        
+
     ))
     _add(out, _record(
         "company_name", company.get("company_name"),
         source_url=url, retrieved_at=at,
         evidence_text=f"Registered legal name: {name}",
-        
+
     ))
     _add(out, _record(
         "legal_form", company.get("organization_form"),
         source_url=url, retrieved_at=at,
         evidence_text=f"Legal form: {company.get('organization_form')}",
-        
+
     ))
 
     industry = company.get("industry") or {}
@@ -267,7 +268,7 @@ def _registry_evidence(company: dict[str, Any]) -> list[Evidence]:
         evidence_text=(
             f"NACE {industry.get('code')}: {industry.get('description')}"
         ),
-        
+
     ))
 
     _add(out, _record(
@@ -276,33 +277,33 @@ def _registry_evidence(company: dict[str, Any]) -> list[Evidence]:
         evidence_text=(
             "Purpose as registered: " + str(company.get("business_description"))
         ),
-        
+
     ))
 
     _add(out, _record(
         "address", company.get("business_address") or company.get("address"),
         source_url=url, retrieved_at=at,
         evidence_text=f"Registered business address: {company.get('address')}",
-        
+
     ))
     _add(out, _record(
         "postal_address", company.get("postal_address"),
         source_url=url, retrieved_at=at,
         evidence_text=f"Registered postal address: {company.get('postal_address')}",
-        
+
     ))
     _add(out, _record(
         "municipality", company.get("municipality"),
         source_url=url, retrieved_at=at,
         evidence_text=f"Municipality: {company.get('municipality')}",
-        
+
     ))
 
     _add(out, _record(
         "registration_date", company.get("registration_date"),
         source_url=url, retrieved_at=at,
         evidence_text=f"Registered in Enhetsregisteret {company.get('registration_date')}",
-        
+
     ))
     _add(out, _record(
         "founding_date", company.get("founding_date"),
@@ -326,7 +327,7 @@ def _registry_evidence(company: dict[str, Any]) -> list[Evidence]:
         "municipality_code", company.get("municipality_code"),
         source_url=url, retrieved_at=at,
         evidence_text=f"Municipality code {company.get('municipality_code')}",
-        
+
     ))
 
     for field, label in (
@@ -338,7 +339,7 @@ def _registry_evidence(company: dict[str, Any]) -> list[Evidence]:
             field, company.get(field),
             source_url=url, retrieved_at=at,
             evidence_text=f"{label}: {company.get(field)}",
-            
+
         ))
 
     for field, label in (
@@ -352,7 +353,7 @@ def _registry_evidence(company: dict[str, Any]) -> list[Evidence]:
                 field, value,
                 source_url=url, retrieved_at=at,
                 evidence_text=f"{label}: {value}",
-                
+
             ))
 
     return out
@@ -618,7 +619,7 @@ def _apply_extraction(
 
     # Carried across pages so the same statement from two directories is
     # published once.
-    accepted_facts = []
+    accepted_facts: list[ExtractedFact] = []
 
     while queue and pages_read < max_pages:
         source, is_seed = queue.pop(0)
@@ -647,9 +648,16 @@ def _apply_extraction(
         pages_read += 1
 
         # Follow-ups, planned only from a seed on the registered domain.
+        # Comparing against the *identity's* domain rather than trusting
+        # the source's is the point: a source that somehow claimed to be
+        # on the registered domain must not be able to grant that to the
+        # pages it links to.
+        #
         # ``pages_read`` is not yet the cap on queue size, so the walk is
         # bounded by the remaining page budget below.
-        if is_seed and source.domain == identity.registered_domain:
+        registered_domain = identity.registered_domain
+
+        if is_seed and registered_domain and source.domain == registered_domain:
             for url in plan_crawl(
                 source.url,
                 page.links,
@@ -844,13 +852,17 @@ def build_profile(
     # Identity is mandatory and raises on failure; management and accounts
     # are enrichments that degrade to empty. Record which, so a missing
     # CEO is never mistaken for a company that has none.
-    retrieval_errors = [
-        f"roles: {roles['error']}" if roles.get("error") else None,
-        f"financials: {financials['error']}"
-        if financials.get("error")
-        else None,
-    ]
-    retrieval_errors = [e for e in retrieval_errors if e]
+    #
+    # Built by appending rather than by filtering a list that may hold
+    # None, so the result is list[str] from the start and the filtering
+    # step cannot be forgotten when this is edited.
+    retrieval_errors: list[str] = []
+
+    if roles.get("error"):
+        retrieval_errors.append(f"roles: {roles['error']}")
+
+    if financials.get("error"):
+        retrieval_errors.append(f"financials: {financials['error']}")
 
     if company.get("stale"):
         retrieval_errors.append(

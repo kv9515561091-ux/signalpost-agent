@@ -20,14 +20,14 @@ SAMPLE = Path(__file__).resolve().parent / "fixtures" / "search_sample.json"
 
 
 def identity(**overrides) -> CompanyIdentity:
-    base = dict(
-        company_number="989061593",
-        name="-G- GROUP AS",
-        address="c/o Gjørva, Hellerud gårdsvei 5B, 0671 OSLO, Norge",
-        postal_code="0671",
-        registered_website=None,
-        registered_domain=None,
-    )
+    base = {
+        "company_number": "989061593",
+        "name": "-G- GROUP AS",
+        "address": "c/o Gjørva, Hellerud gårdsvei 5B, 0671 OSLO, Norge",
+        "postal_code": "0671",
+        "registered_website": None,
+        "registered_domain": None,
+    }
     base.update(overrides)
     return CompanyIdentity(**base)
 

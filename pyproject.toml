@@ -1,0 +1,93 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "signalpost-agent"
+version = "0.1.0"
+description = "Evidence-first Norwegian company profiles from official open data."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+
+# Runtime dependencies are deliberately minimal. The agent reads JSON from
+# three Norwegian open-data endpoints and flattens pages with the standard
+# library alone; no HTML parser is needed because every published fact
+# must quote its source verbatim, which is checked against the raw text.
+dependencies = [
+    "requests>=2.32,<3",
+    "pydantic>=2.9,<3",
+    "python-dotenv>=1.0,<2",
+]
+
+[project.optional-dependencies]
+# The Anthropic provider needs the SDK. The NVIDIA path does not: the agent
+# speaks the Chat Completions shape over HTTP using `requests` already.
+anthropic = ["anthropic>=1.13"]
+dev = [
+    "ruff>=0.6",
+    "mypy>=1.11",
+]
+
+[project.scripts]
+signalpost = "src.__main__:main"
+signalpost-batch = "src.batch_cli:main"
+
+[tool.setuptools]
+# `src` is the package itself here, not a src-layout parent directory:
+# imports are `from src.agent import ...`, so it is listed by name rather
+# than auto-discovered.
+packages = ["src"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 88
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "F",    # pyflakes: unused imports, undefined names
+    "W",    # warnings
+    "I",    # import sorting
+    "B",    # bugbear
+    "UP",   # pyupgrade
+    "C4",   # comprehensions
+    "SIM",  # simplifications
+]
+# The codebase deliberately uses bare `except Exception` where one bad
+# entity must not abort a batch of good ones, and noqa comments mark the
+# places where it has considered the tradeoff and accepted it.
+ignore = [
+    "E501",   # line length is handled by the formatter, not the linter
+    "B008",   # argparse defaults are evaluated once at parser build
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests legitimately reach into private helpers and build fixtures that
+# do not follow the production contract.
+"tests/*" = ["B011", "SIM117"]
+# The batch runner intentionally catches broad exceptions per company.
+"src/batch.py" = ["BLE001"]
+
+[tool.mypy]
+python_version = "3.10"
+files = ["src"]
+# `src` is the package name, not a src-layout parent, and has no
+# __init__.py. Without this mypy resolves src/agent.py both as "agent"
+# and "src.agent" and refuses to check anything.
+explicit_package_bases = true
+mypy_path = "."
+# Advisory to begin with. The suite has 359 tests and no type checking
+# history, so the first run surfaces findings that are cheaper to record
+# than to fix blind. Tightening this is deliberate, incremental work --
+# not something to switch on in the same commit that introduces it.
+ignore_missing_imports = true
+warn_unused_configs = true
+warn_redundant_casts = true
+no_implicit_optional = true
+
+[[tool.mypy.overrides]]
+# Pydantic and the third-party clients return loosely typed payloads by
+# design; annotating them precisely would be fiction.
+module = ["pydantic.*", "requests.*", "dotenv.*"]
+ignore_missing_imports = true

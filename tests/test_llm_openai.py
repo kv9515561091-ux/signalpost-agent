@@ -10,8 +10,8 @@ JSON must be handled without ever guessing at the content.
 import unittest
 from unittest.mock import MagicMock, patch
 
-from src.ratelimit import RateLimiter
 from support import disable_llm_pacing, restore_llm_pacing
+
 from src.llm_openai import (
     CallFailed,
     OpenAICompatibleBackend,
@@ -19,6 +19,7 @@ from src.llm_openai import (
     Truncated,
     parse_json_response,
 )
+from src.ratelimit import RateLimiter
 
 
 def setUpModule():

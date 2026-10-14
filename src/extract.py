@@ -25,8 +25,10 @@ model is never asked to restate identity, so it can never overwrite it.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
-from typing import Any, Iterable
+from collections.abc import Iterable
+from dataclasses import dataclass
+from dataclasses import field as dataclass_field
+from typing import Any
 
 from src import llm
 from src.sources import TIER_MAX_CONFIDENCE
@@ -218,7 +220,9 @@ def _overlap(a: str, b: str) -> float:
     return len(ta & tb) / min(len(ta), len(tb))
 
 
-def _restates_registry(value: str, registry_values: Iterable[str]) -> bool:
+def _restates_registry(
+    value: str, registry_values: Iterable[str | None]
+) -> bool:
     """Whether a fact merely repeats something Brreg already supplied.
 
     Directory sites reprint registry fields. Publishing those again as
@@ -257,7 +261,7 @@ class ExtractedFact:
     confidence: float
     published_date: str | None = None
     verification: str = "quote_matched"
-    notes: list[str] = field(default_factory=list)
+    notes: list[str] = dataclass_field(default_factory=list)
 
 
 @dataclass
@@ -265,8 +269,8 @@ class ExtractionReport:
     """What extraction attempted and what survived verification."""
 
     source_url: str
-    facts: list[ExtractedFact] = field(default_factory=list)
-    rejected: list[dict[str, Any]] = field(default_factory=list)
+    facts: list[ExtractedFact] = dataclass_field(default_factory=list)
+    rejected: list[dict[str, Any]] = dataclass_field(default_factory=list)
     llm_used: bool = False
     error: str | None = None
 
@@ -343,8 +347,8 @@ def verify_candidate(
     tier: int,
     source_type: str,
     company_number: str,
-    registry_values: Iterable[str] = (),
-    accepted: Iterable["ExtractedFact"] = (),
+    registry_values: Iterable[str | None] = (),
+    accepted: Iterable[ExtractedFact] = (),
 ) -> tuple[ExtractedFact | None, str | None]:
     """Check one model-proposed fact.
 
@@ -364,8 +368,12 @@ def verify_candidate(
         return None, f"field not extractable: {name}"
     if not value or not str(value).strip():
         return None, "empty value"
+
+    # quote_exists() rejects a missing or blank quote, so once it returns
+    # True the value is a real str and the later .strip() is safe.
     if not quote_exists(quote or "", page_text):
         return None, "quote not found in page"
+    quote = str(quote)
 
     # A quote that cites a different organization is describing another
     # entity, whatever else it says.
@@ -411,7 +419,7 @@ def extract_from_page(
     tier: int,
     source_type: str,
     title: str = "",
-    registry_values: Iterable[str] = (),
+    registry_values: Iterable[str | None] = (),
     already_accepted: Iterable[ExtractedFact] = (),
 ) -> ExtractionReport:
     """Extract and verify facts from one page.

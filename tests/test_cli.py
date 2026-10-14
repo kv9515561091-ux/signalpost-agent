@@ -96,7 +96,6 @@ class ParityTests(unittest.TestCase):
 
     def test_shared_flags_exist_in_both(self):
         import run_batch
-
         from src.__main__ import build_parser as single
 
         single_flags = self._flags(single())
@@ -108,7 +107,6 @@ class ParityTests(unittest.TestCase):
 
     def test_shared_defaults_agree(self):
         import run_batch
-
         from src.__main__ import build_parser as single
 
         single_args = single().parse_args([])
@@ -125,7 +123,6 @@ class ParityTests(unittest.TestCase):
         # Recorded so a new batch-only flag is a conscious choice rather
         # than an accident.
         import run_batch
-
         from src.__main__ import build_parser as single
 
         self.assertEqual(
@@ -135,7 +132,6 @@ class ParityTests(unittest.TestCase):
 
     def test_single_only_flags_are_deliberate(self):
         import run_batch
-
         from src.__main__ import build_parser as single
 
         self.assertEqual(
@@ -145,7 +141,6 @@ class ParityTests(unittest.TestCase):
 
     def test_max_crawl_links_zero_is_accepted(self):
         import run_batch
-
         from src.__main__ import build_parser as single
 
         self.assertEqual(

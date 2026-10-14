@@ -18,7 +18,7 @@ from unittest.mock import patch
 
 from src import cache as cache_module
 from src import tinyfish_search
-from src.cache import SEARCH_TTL_SECONDS, DiskCache, cached_json
+from src.cache import SEARCH_TTL_SECONDS, DiskCache
 
 
 def _payload(url="https://example.no"):

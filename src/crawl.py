@@ -118,10 +118,7 @@ def _looks_like_page(href: str) -> bool:
     if lowered.startswith(_NON_PAGE_SCHEMES):
         return False
 
-    if _BINARY_HINTS.search(lowered):
-        return False
-
-    return True
+    return not _BINARY_HINTS.search(lowered)
 
 
 def _normalise(base_url: str, href: str) -> str | None:

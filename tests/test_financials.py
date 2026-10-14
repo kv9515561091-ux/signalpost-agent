@@ -9,8 +9,8 @@ a judge noticing a wrong number in the output.
 
 import unittest
 
-from src.financials import _normalise_year, _pick_statement, _ratio
 from src.brreg import format_address
+from src.financials import _normalise_year, _pick_statement, _ratio
 
 
 class AddressFormattingTests(unittest.TestCase):

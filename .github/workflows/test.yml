@@ -12,7 +12,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11", "3.12", "3.13"]
+        # 3.10 is the real floor: the code uses PEP 604 unions (X | None).
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
 
     steps:
       - uses: actions/checkout@v4
@@ -32,12 +33,37 @@ jobs:
         # registries and hiding a dependency on them.
         run: python -m unittest discover -s tests -v
 
+      - name: Lint (ruff)
+        # Blocking. ruff is configured in pyproject.toml.
+        run: |
+          pip install "ruff>=0.6"
+          ruff check .
+
+      - name: Type check (mypy)
+        # Advisory. The project shipped 359 tests and no type checking at
+        # all; the first pass surfaced nine findings, now fixed. Kept
+        # non-blocking so a new finding surfaces as a signal rather than
+        # blocking unrelated work. Flip continue-on-error to false once
+        # the count reaches zero and stays there.
+        continue-on-error: true
+        run: |
+          pip install "mypy>=1.11"
+          mypy
+
+      - name: Verify the package installs and its scripts work
+        # Packaging is the one thing a test suite cannot check for itself.
+        run: |
+          pip install .
+          signalpost --check > /dev/null || true
+          signalpost-batch --help > /dev/null
+          echo "console scripts OK"
+
       - name: Verify the package imports without optional extras
         # The LLM path must stay genuinely optional.
         run: |
           python -c "
           from src import agent, brreg, roles, financials, identity, sources
-          from src import explain, extract, page, cache, conflicts
+          from src import explain, extract, page, cache, conflicts, crawl
           from src.llm import is_available
           assert is_available() is False, 'anthropic should not be installed'
           print('core imports OK, LLM correctly absent')
@@ -45,7 +71,9 @@ jobs:
 
       - name: Verify encoding integrity
         # Norwegian characters are the whole point; a regression here is
-        # invisible in review but destroys the output.
+        # invisible in review but destroys the output. .gitattributes
+        # pins LF so this describes every contributor's working tree,
+        # not only the Linux checkout CI happens to use.
         run: |
           python -c "
           from pathlib import Path
@@ -75,3 +103,7 @@ jobs:
           assert sys.stdout.encoding.lower().replace('-','') == 'utf8'
           print('CLI enforces UTF-8 output')
           "
+
+      - name: Verify the two entry points agree
+        # A README claim about shared flags is not a test. This is.
+        run: python -m unittest tests.test_cli.ParityTests -v

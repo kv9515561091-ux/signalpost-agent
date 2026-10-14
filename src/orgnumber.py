@@ -38,7 +38,9 @@ def mod11_control_digit(serial: str) -> int | None:
     Returns ``None`` when the serial cannot yield a valid control digit
     (a remainder that would require the digit 10).
     """
-    weighted = sum(int(d) * w for d, w in zip(serial, MOD11_WEIGHTS))
+    weighted = sum(
+            int(d) * w for d, w in zip(serial, MOD11_WEIGHTS, strict=True)
+        )
     check = 11 - (weighted % 11)
 
     if check == 11:
