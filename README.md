@@ -30,9 +30,19 @@ python -m src.agent 989061593 --extract --narrate  # everything
 python -m src.agent 989061593 --json -v            # raw profile + provenance
 python -m src.agent --clear-cache                  # drop cached responses
 
-python -m unittest discover -s tests               # 188 tests
-python run_batch.py                                # batch over data/company_numbers.txt
+# Batch. Registry-only by default; enrichment is opt-in because every
+# page costs a model call.
+python run_batch.py
+python run_batch.py --web --extract --narrate
+python run_batch.py --extract --max-sources 4 --max-pages 6
+python run_batch.py --no-llm                       # deterministic, free
+
+python -m unittest discover -s tests               # 354 tests
 ```
+
+Both entry points take the same flags, deliberately. A separate
+vocabulary per entry point is how `--extract` ends up meaning something
+different in each.
 
 Optional LLM features use either provider. Put one key in `.env`:
 
@@ -61,10 +71,42 @@ COLD: Cache: 0 hit(s), 3 written | Requests used: 3/2000
 WARM: Cache: 3 hit(s), 0 written | Requests used: 0/2000
 ```
 
+Search results are cached too, but for **one hour** rather than six —
+page wording and search ranking drift, while a company's legal identity
+does not. An hour still covers a whole batch run.
+
+> The search cache is keyed on the *expanded* URL, query string
+> included. Every search goes to the same endpoint with the query in the
+> query string, so keying on the bare endpoint would serve one company's
+> results to every other company — a silent, expensive, wrong-answer bug
+> rather than a visible failure. `tests/test_search_cache.py` asserts
+> isolation first and cost second.
+
+Measured: a repeat query drops from 2.54 s / 1 request to 0.03 s / 0.
+
 A cache entry past its time-to-live is **not** silently reused. It is
 served only when revalidation fails, and the profile then carries
 `served_stale: true` plus a retrieval gap saying so. A 404 is never
 replaced by a stale body — "no such record" is the current truth.
+
+### Rate limiting
+
+NVIDIA's hosted endpoint enforces a request-per-minute ceiling that it
+does not publish, and returns 429 with **no `Retry-After`**, so a client
+cannot react intelligently to being throttled. Requests are paced up
+front instead of discovering the limit by tripping it.
+
+| | |
+|---|---|
+| `NVIDIA_RPM` | Requests per minute. Default **30**, below the observed ~40 RPM limit, so a run has headroom rather than running exactly at the edge |
+| Inter-company `--delay` | A different thing. It spaces *companies*; the limiter spaces *model calls* within one company |
+
+Once extraction is on, a ten-company batch makes roughly 60 model calls,
+so this is load-bearing rather than decorative. Backoff on 429 still
+applies as a second line of defence.
+
+Set `NVIDIA_RPM=0` to disable pacing — useful for offline tests, which
+otherwise sleep between mocked calls.
 
 ---
 
@@ -136,7 +178,56 @@ This turns hallucination from invisible into detectable. Facts the model
 proposes but cannot substantiate are recorded in `extraction_rejected`
 with the reason, rather than silently vanishing.
 
-### 5. Conflicts are preserved, not resolved by convenience
+Precision rules layered on top, each of which discards something a model
+will happily produce:
+
+- **Registry restatement.** A directory reprinting a value Brreg already
+  published is not a new discovery, so it is dropped as redundant.
+- **Cross-page deduplication.** The same statement from six sources is
+  published once.
+- **Business-only.** Personal-biography content is out of scope, so the
+  prompt excludes it.
+- **Official website first.** The registered domain is seeded as a
+  Tier-2 source ahead of search results, since it is the strongest thing
+  the agent can find.
+- **Deterministic temperature.** Extraction asks for `temperature=0.0`
+  and falls back to `1.0` only if the endpoint rejects it.
+
+### 5. A bounded crawl inside the trust boundary
+
+A homepage is a thin basis for a profile; the About and Services pages
+carry the durable facts. So a verified first-party page may enqueue
+follow-ups from **its own domain**.
+
+This is safe where arbitrary search is not. Every URL sits on the domain
+the registry already vouched for, so it inherits the homepage's
+verification rather than earning its own — the crawler never widens the
+trust boundary, it only walks inside one that has been proven. The walk
+is depth one and hard-capped (`--max-crawl-links`, default 5), so it
+cannot run away into a sitemap.
+
+Link choice prefers *stable* pages and rejects press, personnel and
+compliance pages. Those are not merely ranked last: they score negative
+and are dropped, because every followed page costs a model call.
+
+Negatives are evaluated **before** positives, which is not a detail.
+`/about-us/accessibility-statement` contains "about" — with positives
+checked first, every compliance page wins on the vocabulary it happens to
+share, and TINE's nav still surfaced a privacy statement until the order
+was reversed.
+
+Unknown paths are followed at a middling score rather than excluded. These
+sites are not built to a template, and an allowlist would silently return
+nothing for every company whose paths differ.
+
+Crawled pages are recorded in `web_sources` with a `+same_domain` basis,
+so provenance stays visible.
+
+Measured on Equinor: 3 facts on one page → 12 after raising the caps →
+**26 across three pages** — headcount, geographic footprint, portfolio and
+market position, rather than press releases.
+
+### 6. Conflicts are preserved, not resolved by convenience
 
 When sources disagree the registry wins — but the losing value is kept and
 reported. Annual figures are keyed by fiscal year so revenue in FY2025 and
@@ -163,10 +254,15 @@ FY2023 are not mistaken for a disagreement.
 - **Negative revenue is real.** Filed accounts can report negative total
   operating income after write-downs. These are published as filed, and
   derived ratios are suppressed when the denominator is not positive.
-- **The LLM path is unverified against the live API.** No key was available
-  during development. It is covered by 15 tests over request shape,
-  refusal/truncation handling and every degradation path, but treat the
-  first real run as a shakedown.
+- **The Anthropic path is still mock-tested only.** The NVIDIA path has
+  been verified live end-to-end; Anthropic has not, because no key was
+  available. Treat the first Anthropic run as a shakedown.
+- **Personal-detail filtering is prompt-level, not semantic.** The
+  business-only rule is an instruction to the model, not a classifier
+  deciding what is a person and what is a company.
+- **Facts concentrate in `business_summary`.** Fields like
+  `recent_developments` appear only when a page supports them; expect the
+  stable descriptive material to dominate.
 - **Proff may not be scraped.** Their terms forbid systematic automated
   retrieval. It is used only as a discovery signal, never as a fact source.
 
@@ -184,21 +280,24 @@ src/
   sources.py       7-tier reliability model, structural URL classification
   identity.py      wrong-company guard (pure, no I/O)
   discovery.py     search → verify → rank
+  crawl.py         bounded same-domain follow-up planner
   extract.py       schema-guided extraction + quote verification
   explain.py       narrative + deterministic fallback
   llm.py           optional Claude client (lazy import, graceful absence)
-  page.py          page fetching, SSRF guard, HTML → text (stdlib only)
+  llm_openai.py    OpenAI-compatible backend for NVIDIA NIM and others
+  page.py          page fetching, SSRF guard, HTML → text + links (stdlib only)
   conflicts.py     disagreement detection and reconciliation
   freshness.py     as_of / reporting-period semantics
   evidence.py      Evidence and FactRecord models
   http.py          retrying fetch, streamed size-capped bodies
   cache.py         TTL disk cache with honest stale handling
+  ratelimit.py     per-process request pacing
   text.py          Norwegian-aware text folding
   batch.py         batch runner over a list of org numbers
   tinyfish_search.py  search provider adapter
   request_tracker.py  outbound request budget
   __main__.py      CLI
-tests/             188 tests, no network required
+tests/             354 tests, no network required
 ```
 
 Tests run on the standard library alone — `python -m unittest discover -s
@@ -216,6 +315,14 @@ them unchanged if you prefer it.
 | `NVIDIA_MODEL` | no | Default `nvidia/nemotron-3-super-120b-a12b` |
 | `NVIDIA_BASE_URL` | no | Default `https://integrate.api.nvidia.com/v1` |
 | `NVIDIA_THINKING` | no | `true` to leave the model's reasoning on |
+| `NVIDIA_RPM` | no | Request pacing, default 30. `0` disables |
+
+Extraction depth, same defaults in both entry points: **6 sources and 10
+pages** per company. Sources stop at six because past that the marginal
+results are directories repeating Enhetsregisteret; pages exceed sources
+because a source costs a search while a page costs a model call. These
+bound cost, never trust — the identity gate runs first, so widening them
+widens what is *considered*, not what is *accepted*.
 
 `ANTHROPIC_AUTH_TOKEN` and `CLAUDE_CODE_OAUTH_TOKEN` are also honoured.
 
