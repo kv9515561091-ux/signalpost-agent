@@ -220,6 +220,100 @@ def _overlap(a: str, b: str) -> float:
     return len(ta & tb) / min(len(ta), len(tb))
 
 
+# Personal-biography signals, Norwegian and English.
+#
+# The business-only rule is an instruction to the model, and instructions
+# are the weakest link in this pipeline: the quote check proves a sentence
+# exists on the page, not that the sentence is about the company. A page
+# that mixes a founder's CV with a company description passes identity,
+# passes the quote check, and then contributes the CV.
+#
+# These patterns are deliberately narrow. Each requires a term that has
+# essentially no place in a business description, so that "family-owned"
+# or "healthcare" -- both plausible in a real company profile -- are not
+# caught. A false positive here discards a legitimate fact, so anything
+# ambiguous is left to the prompt.
+_PERSONAL_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"\b(?:hustru|ektefelle|gift)\b", re.I), "spouse"),
+    (re.compile(r"\b(?:barn|barnas|barnebarn|sønn|datter)\b", re.I), "children"),
+    (re.compile(r"\b(?:født|født på|født i)\b", re.I), "birth"),
+    (re.compile(r"\b(?:døde|dødsfall|begravet|minnesmerke)\b", re.I), "death"),
+    (re.compile(
+        r"\b(?:hobby|hobbyer|fritid|seilmer|sykkelmer|jakthund)\b", re.I,
+    ), "hobbies"),
+    (re.compile(
+        r"\b(?:gift med|forelsket|skilt|skiltet|bryllup)\b", re.I,
+    ), "marital status"),
+    (re.compile(
+        r"\b(?:spouse|wife|husband|married to|divorced)\b", re.I,
+    ), "spouse"),
+    (re.compile(r"\b(?:his|her)\s+(?:wife|husband|son|daughter|mother)\b", re.I),
+     "family"),
+    (re.compile(r"\b(?:born in|birthday|grew up in)\b", re.I), "biography"),
+    (re.compile(r"\b(?:was born|passed away|in memoriam)\b", re.I), "biography"),
+    (re.compile(r"\b(?:obituary|funeral service)\b", re.I), "death"),
+    (re.compile(
+        r"\b(?:survived by|preceded in death|his death|her death)\b", re.I,
+    ), "death"),
+)
+
+# The full quote must be almost entirely personal for it to be refused.
+# A company profile that mentions one founder's spouse in passing is
+# still a company profile.
+# A *distinct* personal signal is sufficient; density is not the test.
+#
+# Density was tried first and refused real biography. "He is married to
+# Anna and they have three children" scores 2 personal words across 10 --
+# only 0.2 -- because English pronouns and prepositions are doing the
+# work, and the actual signal ("children") is one word. Tuning the
+# threshold down to catch it dragged "our founder's wife Anna led the
+# charity" (1 word, 0.10) into territory where a company mentioning a
+# spouse once would be discarded.
+#
+# Density is still used, but only to distinguish an incidental mention,
+# which yields exactly one signal and reads as a clause inside a longer
+# business statement, from text that is *about* a person.
+_PERSONAL_RATIO_THRESHOLD = 0.18
+
+
+def _is_personal_content(value: str, quote: str) -> str | None:
+    """Whether a fact is biography rather than company information.
+
+    Returns the signal name when refused, or ``None`` when the fact looks
+    like business content.
+
+    Scored against the quote when one is available, because that is the
+    text the fact is claiming to be drawn from, falling back to the value.
+    """
+    text = quote or value
+    folded = fold(text)
+
+    if not folded:
+        return None
+
+    hits = 0
+    for pattern, _label in _PERSONAL_PATTERNS:
+        if pattern.search(text):
+            hits += 1
+
+    if not hits:
+        return None
+
+    # Require the personal terms to account for a real share of the text
+    # before refusing, so a single incidental mention survives.
+    personal_words = sum(
+        len(m.group(0).split())
+        for pattern, _ in _PERSONAL_PATTERNS
+        for m in pattern.finditer(text)
+    )
+    total_words = max(1, len(text.split()))
+
+    if personal_words / total_words < _PERSONAL_RATIO_THRESHOLD:
+        return None
+
+    return "personal biography rather than company information"
+
+
 def _restates_registry(
     value: str, registry_values: Iterable[str | None]
 ) -> bool:
@@ -386,6 +480,13 @@ def verify_candidate(
 
     if _restates_registry(text, registry_values):
         return None, "repeats a value already sourced from the registry"
+
+    # Biography that happens to sit on a verified page is still not a
+    # company fact. Checked before deduplication so the recorded reason
+    # is the substantive one.
+    personal = _is_personal_content(text, quote)
+    if personal:
+        return None, personal
 
     for existing in accepted:
         if existing.field == name and _overlap(existing.value, text) >= 0.5:
