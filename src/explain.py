@@ -286,7 +286,10 @@ def explain(profile: Any, use_llm: bool = True) -> Explanation:
 
     return Explanation(
         text=f"{narrative.strip()}\n\n{deterministic}",
-        generated_by="claude",
+        generated_by=llm.describe(),
         llm_used=True,
-        note="Narrative from Claude; provenance summary from the record.",
+        note=(
+            f"Narrative from {llm.describe()}; provenance summary from "
+            "the verified record."
+        ),
     )

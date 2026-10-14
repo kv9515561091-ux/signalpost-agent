@@ -232,7 +232,12 @@ class NvidiaNarrativeTests(unittest.TestCase):
                 result = explain(profile, use_llm=True)
 
         self.assertTrue(result.llm_used)
-        self.assertEqual(result.generated_by, "claude")
+        # The attribution must name the provider that actually answered.
+        # Hardcoding "claude" here misreported every non-Anthropic run.
+        self.assertIn("openai_compatible", result.generated_by)
+        self.assertIn("nvidia", result.generated_by)
+        self.assertIn("openai_compatible", result.note)
+        self.assertNotIn("Claude", result.note)
         self.assertTrue(
             result.text.startswith("-G- GROUP AS invests in property")
         )

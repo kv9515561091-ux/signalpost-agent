@@ -495,6 +495,41 @@ def reconcile_evidence(evidence: list[Evidence]) -> list[dict[str, Any]]:
     return conflict_report(reconcile_all(claims))
 
 
+def _describe_fetch_failure(exc: Exception) -> str:
+    """Turn a transport exception into something actionable.
+
+    A bare ``HTTPError`` gives a reader nothing to act on. The status
+    decides what the useful advice is: 403 means the site is refusing an
+    automated request and retrying will not help, while 429 means it is
+    worth slowing down for.
+    """
+    import requests
+
+    if isinstance(exc, requests.HTTPError) and exc.response is not None:
+        status = exc.response.status_code
+        if status in (401, 403):
+            return (
+                f"HTTP {status} - the site is refusing automated "
+                "requests; nothing to fix here"
+            )
+        if status == 429:
+            return f"HTTP {status} - rate limited; retry later"
+        if status == 404:
+            return "HTTP 404 - page no longer exists"
+        if 500 <= status < 600:
+            return f"HTTP {status} - the site had a server error"
+        return f"HTTP {status}"
+
+    if isinstance(exc, requests.Timeout):
+        return "timed out"
+    if isinstance(exc, requests.ConnectionError):
+        return "connection failed"
+    if isinstance(exc, requests.RequestException):
+        return f"network error ({type(exc).__name__})"
+
+    return f"{type(exc).__name__}: {exc}"
+
+
 def _apply_extraction(
     profile: CompanyProfile,
     identity: CompanyIdentity,
@@ -525,9 +560,17 @@ def _apply_extraction(
     for source in candidates[:max_pages]:
         try:
             page = fetch_page(source.url)
-        except (UnsafeUrl, Exception) as exc:  # noqa: BLE001
+        except UnsafeUrl as exc:
             profile.retrieval_errors.append(
-                f"page {source.domain}: {type(exc).__name__}"
+                f"page {source.domain}: blocked ({exc})"
+            )
+            continue
+        except Exception as exc:  # noqa: BLE001
+            # Name the actual cause. "HTTPError" alone tells a reader
+            # nothing about whether to retry, switch model, or move on.
+            detail = _describe_fetch_failure(exc)
+            profile.retrieval_errors.append(
+                f"page {source.domain}: {detail}"
             )
             continue
 

@@ -6,7 +6,7 @@ Live endpoint contracts are pinned separately in test_financials.py.
 
 import unittest
 from contextlib import ExitStack
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from src.agent import build_profile, reconcile_evidence, validate_company_number
 from src.evidence import Evidence
@@ -276,6 +276,76 @@ class DegradedRetrievalTests(unittest.TestCase):
 
         self.assertIsNone(profile.ceo_name)
         self.assertEqual(profile.owner_name, "Andrii Zotko")
+
+
+class FetchFailureReportingTests(unittest.TestCase):
+    """A bare exception name tells a reader nothing actionable."""
+
+    def _response(self, status):
+        response = MagicMock()
+        response.status_code = status
+        response.url = "https://example.no"
+        return response
+
+    def test_forbidden_says_retrying_will_not_help(self):
+        import requests
+
+        from src.agent import _describe_fetch_failure
+
+        exc = requests.HTTPError(response=self._response(403))
+        message = _describe_fetch_failure(exc)
+        self.assertIn("403", message)
+        self.assertIn("nothing to fix", message)
+
+    def test_rate_limit_is_distinguished(self):
+        import requests
+
+        from src.agent import _describe_fetch_failure
+
+        message = _describe_fetch_failure(
+            requests.HTTPError(response=self._response(429))
+        )
+        self.assertIn("rate limited", message)
+
+    def test_server_error_is_distinguished(self):
+        import requests
+
+        from src.agent import _describe_fetch_failure
+
+        self.assertIn("server error", _describe_fetch_failure(
+            requests.HTTPError(response=self._response(503))
+        ))
+
+    def test_timeout_and_connection_error_are_named(self):
+        import requests
+
+        from src.agent import _describe_fetch_failure
+
+        self.assertEqual(
+            _describe_fetch_failure(requests.Timeout()), "timed out"
+        )
+        self.assertIn(
+            "connection failed",
+            _describe_fetch_failure(requests.ConnectionError()),
+        )
+
+    def test_unknown_exception_keeps_its_message(self):
+        from src.agent import _describe_fetch_failure
+
+        message = _describe_fetch_failure(ValueError("something odd"))
+        self.assertIn("something odd", message)
+
+    def test_no_bare_exception_class_names_reach_the_profile(self):
+        # "HTTPError" alone was what surfaced from the live run.
+        from src.agent import _describe_fetch_failure
+        import requests
+
+        for exc in (
+            requests.HTTPError(response=self._response(403)),
+            requests.Timeout(),
+            requests.ConnectionError(),
+        ):
+            self.assertNotEqual(_describe_fetch_failure(exc), type(exc).__name__)
 
 
 class ValidateCompanyNumberTests(unittest.TestCase):

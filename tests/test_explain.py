@@ -149,7 +149,8 @@ class FallbackTests(unittest.TestCase):
             ):
                 result = explain(profile(), use_llm=True)
         self.assertTrue(result.llm_used)
-        self.assertEqual(result.generated_by, "claude")
+        # Attribution names whichever provider answered.
+        self.assertIn("openai_compatible", result.generated_by)
         self.assertTrue(result.text.startswith("The company invests"))
         # The provenance section is still appended from the record.
         self.assertIn("Brønnøysundregistrene", result.text)
