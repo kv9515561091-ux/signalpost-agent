@@ -1,3 +1,0 @@
-[console_scripts]
-signalpost = src.__main__:main
-signalpost-batch = src.batch_cli:main
