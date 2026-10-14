@@ -151,7 +151,31 @@ class SourceClassification:
 
 
 def get_domain(url: str) -> str:
-    host = urlparse(url).netloc.lower()
+    """The comparable domain for a URL *or* a bare hostname.
+
+    Brreg stores websites as bare hostnames ("www.example.no"), not as
+    URLs. ``urlparse`` reads a scheme-less string as a path, so its
+    ``netloc`` is empty and every bare hostname silently produced "".
+
+    That is not cosmetic: ``CompanyIdentity.registered_domain`` is
+    derived from this, so the whole field was ``None`` for every real
+    company -- which disabled ``registered_domain_match`` and with it
+    the strongest identity rule, registered website plus name.
+    """
+    candidate = (url or "").strip()
+
+    if not candidate:
+        return ""
+
+    # "example.no" is a path until it is made protocol-relative.
+    if "://" not in candidate:
+        candidate = f"//{candidate}"
+
+    host = urlparse(candidate).netloc.lower()
+
+    if "@" in host:
+        host = host.rsplit("@", 1)[1]
+
     for prefix in ("www.", "m.", "stage.", "test."):
         if host.startswith(prefix):
             host = host[len(prefix):]

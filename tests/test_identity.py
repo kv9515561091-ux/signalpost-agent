@@ -10,6 +10,7 @@ from pathlib import Path
 
 from src.identity import (
     CompanyIdentity,
+    get_domain,
     name_tokens,
     strip_legal_form,
     verify,
@@ -175,6 +176,46 @@ class AcceptanceTests(unittest.TestCase):
         )
         self.assertTrue(verdict.verified)
         self.assertIn("983887457", " ".join(verdict.reasons))
+
+
+class DomainNormalisationTests(unittest.TestCase):
+    """Brreg stores websites as bare hostnames, not URLs."""
+
+    def test_bare_hostname_yields_a_domain(self):
+        # urlparse reads a scheme-less string as a path, so netloc was
+        # empty and registered_domain was None for every real company.
+        self.assertEqual(get_domain("www.equinor.com"), "equinor.com")
+
+    def test_full_url_and_bare_hostname_agree(self):
+        self.assertEqual(
+            get_domain("https://www.equinor.com"),
+            get_domain("www.equinor.com"),
+        )
+
+    def test_path_is_discarded(self):
+        self.assertEqual(get_domain("https://m.example.no/a/b"), "example.no")
+
+    def test_empty_inputs_are_safe(self):
+        self.assertEqual(get_domain(""), "")
+        self.assertEqual(get_domain(None), "")
+
+    def test_credentials_are_not_part_of_the_domain(self):
+        self.assertEqual(
+            get_domain("https://user:pw@shop.example.no/a"), "shop.example.no"
+        )
+
+    def test_registered_domain_is_populated_from_brreg_shape(self):
+        parsed = CompanyIdentity.from_brreg(
+            {"company_number": "923609016", "company_name": "EQUINOR ASA",
+             "website": "www.equinor.com"}
+        )
+        self.assertEqual(parsed.registered_domain, "equinor.com")
+
+    def test_missing_website_leaves_it_absent(self):
+        parsed = CompanyIdentity.from_brreg(
+            {"company_number": "923609016", "company_name": "X AS"}
+        )
+        self.assertIsNone(parsed.registered_domain)
 
 
 class SparseIdentityTests(unittest.TestCase):

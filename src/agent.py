@@ -560,6 +560,11 @@ def _describe_fetch_failure(exc: Exception) -> str:
 DEFAULT_MAX_SOURCES = 6
 DEFAULT_MAX_PAGES = 10
 
+# Follow-ups read from a verified first-party page. Small on purpose: the
+# homepage's best links are already a strong set, and each one costs a
+# model call.
+DEFAULT_MAX_CRAWL_LINKS = 5
+
 
 def _apply_extraction(
     profile: CompanyProfile,
@@ -567,13 +572,20 @@ def _apply_extraction(
     *,
     max_sources: int = DEFAULT_MAX_SOURCES,
     max_pages: int = DEFAULT_MAX_PAGES,
+    max_crawl_links: int = DEFAULT_MAX_CRAWL_LINKS,
 ) -> None:
     """Read verified pages and extract publishable facts from them.
 
     Only sources that already passed identity verification are fetched, and
     every extracted fact must quote text that exists verbatim in the page
     it claims to come from. Anything else is refused and recorded.
+
+    A verified first-party page may also enqueue a bounded set of
+    same-domain follow-ups. Those inherit the homepage's verification
+    rather than earning their own, which is why they are only ever planned
+    from a page whose domain the registry already vouched for.
     """
+    from src.crawl import plan_crawl
     from src.extract import extract_from_page
     from src.page import UnsafeUrl, fetch_page
 
@@ -592,11 +604,25 @@ def _apply_extraction(
     if not candidates:
         return
 
+    # Work queue of (source, is_seed). A seed is a discovered source;
+    # only seeds may enqueue follow-ups, which caps the walk at depth 1.
+    queue: list[tuple[WebSource, bool]] = [(s, True) for s in candidates]
+
+    fetched: set[str] = set()
+    pages_read = 0
+
     # Carried across pages so the same statement from two directories is
     # published once.
     accepted_facts = []
 
-    for source in candidates[:max_pages]:
+    while queue and pages_read < max_pages:
+        source, is_seed = queue.pop(0)
+
+        if source.url in fetched:
+            continue
+
+        fetched.add(source.url)
+
         try:
             page = fetch_page(source.url)
         except UnsafeUrl as exc:
@@ -612,6 +638,50 @@ def _apply_extraction(
                 f"page {source.domain}: {detail}"
             )
             continue
+
+        pages_read += 1
+
+        # Follow-ups, planned only from a seed on the registered domain.
+        # ``pages_read`` is not yet the cap on queue size, so the walk is
+        # bounded by the remaining page budget below.
+        if is_seed and source.domain == identity.registered_domain:
+            for url in plan_crawl(
+                source.url,
+                page.links,
+                source.domain,
+                max_links=max_crawl_links,
+                already_seen=fetched,
+            ):
+                queue.append(
+                    (
+                        WebSource(
+                            url=url,
+                            domain=source.domain,
+                            tier=source.tier,
+                            source_type=source.source_type,
+                            # Inherited, not re-earned: the domain was
+                            # already verified, so the ceiling is the
+                            # homepage's.
+                            confidence=source.confidence,
+                            identity_basis=f"{source.identity_basis}+same_domain",
+                            identity_signals=dict(source.identity_signals),
+                            retrieved_at=page.retrieved_at,
+                        ),
+                        False,
+                    )
+                )
+                profile.web_sources.append(
+                    WebSource(
+                        url=url,
+                        domain=source.domain,
+                        tier=source.tier,
+                        source_type=source.source_type,
+                        confidence=source.confidence,
+                        identity_basis=f"{source.identity_basis}+same_domain",
+                        identity_signals=dict(source.identity_signals),
+                        retrieved_at=page.retrieved_at,
+                    )
+                )
 
         report = extract_from_page(
             page_text=page.text,
@@ -722,6 +792,7 @@ def build_profile(
     use_llm: bool = True,
     max_sources: int = DEFAULT_MAX_SOURCES,
     max_pages: int = DEFAULT_MAX_PAGES,
+    max_crawl_links: int = DEFAULT_MAX_CRAWL_LINKS,
 ) -> CompanyProfile:
     """Build a verified company profile from a Norwegian org number.
 
@@ -743,6 +814,9 @@ def build_profile(
             already say.
         max_pages: Page-reading ceiling. Bounds both cost and rate-limit
             pressure, since each page costs a model call.
+        max_crawl_links: Follow-ups read from a verified first-party
+            page. Zero disables the crawl entirely, leaving the
+            homepage-only behaviour.
 
     Raises:
         InvalidCompanyNumber: Malformed number or failed MOD-11 checksum.
@@ -854,7 +928,11 @@ def build_profile(
 
         if include_extraction:
             _apply_extraction(
-                profile, identity, max_sources=max_sources, max_pages=max_pages
+                profile,
+                identity,
+                max_sources=max_sources,
+                max_pages=max_pages,
+                max_crawl_links=max_crawl_links,
             )
 
     if include_narrative:

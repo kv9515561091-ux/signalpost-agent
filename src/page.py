@@ -19,7 +19,7 @@ import html
 import ipaddress
 import re
 import socket
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from urllib.parse import urlparse
 
 from src.http import fetch_bytes
@@ -49,6 +49,8 @@ _BLOCK_SPLIT = re.compile(
 )
 _WHITESPACE = re.compile(r"[ \t\r\f\v]+")
 _BLANK_LINES = re.compile(r"\n{3,}")
+_HREF = re.compile(r"""<a\b[^>]*?\shref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))""",
+                   re.IGNORECASE)
 
 
 class UnsafeUrl(ValueError):
@@ -62,6 +64,7 @@ class Page:
     text: str
     retrieved_at: str
     truncated: bool = False
+    links: list[str] = field(default_factory=list)
 
 
 def _resolve_is_public(host: str) -> bool:
@@ -118,6 +121,32 @@ def validate_url(url: str) -> str:
     return url
 
 
+def extract_links(markup: str) -> list[str]:
+    """Pull outbound ``href`` targets out of HTML, order preserved.
+
+    Relative hrefs are kept as-is; resolving them needs the page URL,
+    which the caller has and this function does not. Duplicates are
+    collapsed, since navigation menus repeat the same target many times
+    and the duplicates carry no additional signal.
+    """
+    seen: dict[str, None] = {}
+
+    for match in _HREF.finditer(markup):
+        href = match.group(1) or match.group(2) or match.group(3)
+
+        if not href:
+            continue
+
+        href = html.unescape(href).strip()
+
+        if not href or href.startswith("#"):
+            continue
+
+        seen.setdefault(href, None)
+
+    return list(seen)
+
+
 def html_to_text(markup: str) -> tuple[str, str]:
     """Reduce HTML to ``(title, text)``.
 
@@ -170,6 +199,7 @@ def fetch_page(url: str, max_text_chars: int = MAX_TEXT_CHARS) -> Page:
         text=text,
         retrieved_at=_iso_now(),
         truncated=truncated,
+        links=extract_links(markup),
     )
 
 
