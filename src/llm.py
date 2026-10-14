@@ -198,8 +198,45 @@ def _anthropic_complete_text(
 
 
 # ------------------------------------------------------------------ facade
+# Credential environment variables, in the order the Anthropic SDK itself
+# resolves them.
+ANTHROPIC_CREDENTIAL_VARS = (
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_AUTH_TOKEN",
+    "CLAUDE_CODE_OAUTH_TOKEN",
+)
+
+OPENAI_CREDENTIAL_VARS = (
+    "NVIDIA_API_KEY",
+    "OPENAI_API_KEY",
+    "OPENAI_COMPATIBLE_API_KEY",
+)
+
+
+def _has_env_credential(names: tuple[str, ...]) -> bool:
+    return any((os.getenv(name) or "").strip() for name in names)
+
+
+def _anthropic_configured() -> bool:
+    """An Anthropic key was configured explicitly."""
+    return _has_env_credential(ANTHROPIC_CREDENTIAL_VARS)
+
+
+def _openai_configured() -> bool:
+    return _has_env_credential(OPENAI_CREDENTIAL_VARS) and (
+        _openai_backend() is not None
+    )
+
+
 def _selected_provider() -> str | None:
-    """Which backend to use, or ``None`` when none is configured."""
+    """Which backend to use, or ``None`` when none is configured.
+
+    Explicitly configured credentials win over anything merely
+    discoverable. The Anthropic SDK resolves credentials from an on-disk
+    profile even with no environment variable set, so a developer machine
+    with Claude Code installed would otherwise silently use Claude even
+    after configuring a different provider.
+    """
     override = (os.getenv("LLM_PROVIDER") or "").strip().lower()
 
     if override in ("anthropic", "claude"):
@@ -209,12 +246,20 @@ def _selected_provider() -> str | None:
     if override in ("none", "off", "disabled"):
         return None
 
-    # Auto: Anthropic wins when configured, since its schema guarantee is
-    # the stronger of the two.
+    # Configured credentials, Anthropic first since its schema guarantee
+    # is the stronger of the two.
+    if _anthropic_configured() and _anthropic_available():
+        return "anthropic"
+    if _openai_configured():
+        return "openai_compatible"
+    if _anthropic_configured() and _anthropic_available():
+        return "anthropic"
+
+    # Nothing configured explicitly. Fall back to a discoverable SDK
+    # profile, so a machine authenticated another way still works.
     if _anthropic_available():
         return "anthropic"
-    if _openai_backend() is not None:
-        return "openai_compatible"
+
     return None
 
 
@@ -243,18 +288,21 @@ def unavailable_reason() -> str | None:
     if override in ("none", "off", "disabled"):
         return "LLM disabled by LLM_PROVIDER"
 
-    if os.getenv("ANTHROPIC_API_KEY"):
+    if _anthropic_configured() and not _anthropic_available():
         return (
             "ANTHROPIC_API_KEY is set but the anthropic package is not "
             "installed. Run: pip install -r requirements-llm.txt"
         )
-    if os.getenv("NVIDIA_API_KEY"):
+    if _openai_configured():
         return "NVIDIA_API_KEY is set but the endpoint rejected a test call"
 
-    return (
-        "No LLM configured. Set ANTHROPIC_API_KEY or NVIDIA_API_KEY in .env "
-        "to enable fact extraction and narrative explanation."
-    )
+    if not _anthropic_configured() and not _openai_configured():
+        return (
+            "No LLM configured. Set ANTHROPIC_API_KEY or NVIDIA_API_KEY "
+            "in .env to enable fact extraction and narrative explanation."
+        )
+
+    return None
 
 
 def describe() -> str:

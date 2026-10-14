@@ -22,6 +22,7 @@ describes, and a confidence bounded by how authoritative that source is.
 ```bash
 pip install -r requirements.txt
 
+python -m src.agent --check                         # is my setup right?
 python -m src.agent 989061593                      # registry spine only
 python -m src.agent 989061593 --narrate            # + written explanation
 python -m src.agent 989061593 --web                # + verified public sources
@@ -43,6 +44,12 @@ NVIDIA_API_KEY=nvapi-...         # NVIDIA NIM; nothing to install
 An Anthropic key wins if both are set; `LLM_PROVIDER` overrides the
 choice (`anthropic` | `nvidia` | `none`). Without a key the agent runs
 unchanged — see [Optional LLM](#optional-llm).
+
+Configured credentials always beat a merely discoverable one. The
+Anthropic SDK resolves an on-disk profile with no environment variable
+set, so without this rule a machine with Claude Code installed would use
+Claude even after NVIDIA had been configured. `--check` prints which
+provider is actually active.
 
 ### Caching
 

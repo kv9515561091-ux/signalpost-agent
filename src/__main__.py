@@ -224,6 +224,107 @@ def _force_utf8_output() -> None:
                 pass
 
 
+def _check_setup() -> int:
+    """Report whether everything is configured, and what to do about it.
+
+    Exists so nobody has to type Python into a shell to find out whether
+    their setup works.
+    """
+    import os
+
+    from src import llm
+    from src.cache import DEFAULT_CACHE_DIR
+
+    lines = []
+    ok = True
+
+    def check(label, passed, detail=""):
+        nonlocal ok
+        mark = "OK  " if passed else "WARN"
+        if not passed:
+            ok = ok and passed
+        lines.append(f"  [{mark}] {label}" + (f" - {detail}" if detail else ""))
+
+    lines.append(RULE)
+    lines.append("SETUP CHECK")
+    lines.append(RULE)
+
+    # Python
+    lines.append("")
+    lines.append("Python")
+    check(f"version {sys.version.split()[0]}", True)
+
+    # Dependencies
+    lines.append("")
+    lines.append("Dependencies")
+    for module, package in (
+        ("requests", "requests"),
+        ("pydantic", "pydantic"),
+        ("dotenv", "python-dotenv"),
+    ):
+        try:
+            __import__(module)
+            check(package, True)
+        except ImportError:
+            check(package, False, "pip install -r requirements.txt")
+
+    # .env
+    lines.append("")
+    lines.append("Configuration")
+    env_file = "C:\\Users\\X1 Carbon\\Downloads\\Signalpost-Agent\\.env"
+    check(".env file", os.path.exists(".env"), env_file if not os.path.exists(".env") else "")
+
+    check("TINYFISH_API_KEY", bool(os.getenv("TINYFISH_API_KEY")),
+          "needed for --web" if not os.getenv("TINYFISH_API_KEY") else "")
+
+    anthropic_key = bool(os.getenv("ANTHROPIC_API_KEY"))
+    nvidia_key = bool(os.getenv("NVIDIA_API_KEY"))
+
+    if anthropic_key or nvidia_key:
+        check("LLM key found", True,
+              "Anthropic" if anthropic_key else "NVIDIA")
+    else:
+        check("LLM key", False, "set ANTHROPIC_API_KEY or NVIDIA_API_KEY in .env")
+
+    provider = llm.provider_name()
+    if provider:
+        lines.append(f"  [OK  ] LLM provider: {llm.describe()}")
+    else:
+        reason = llm.unavailable_reason() or "not configured"
+        check("LLM provider", False, reason)
+
+    # Cache
+    lines.append("")
+    lines.append("Storage")
+    cache_dir = DEFAULT_CACHE_DIR
+    try:
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        probe = cache_dir / ".write-probe"
+        probe.write_text("ok", encoding="utf-8")
+        probe.unlink()
+        check(f"cache directory ({cache_dir})", True)
+    except OSError as exc:
+        check(f"cache directory ({cache_dir})", False, str(exc))
+
+    check("batch output path (data/company_profiles.json)", True)
+
+    lines.append("")
+    lines.append(RULE)
+    if ok:
+        lines.append("Everything needed for a full run is configured.")
+        lines.append("")
+        lines.append("Try:")
+        lines.append("  python -m src.agent 989061593 --web --extract --narrate")
+    else:
+        lines.append("Some things above need attention (WARN).")
+        lines.append("The registry spine works regardless:")
+        lines.append("  python -m src.agent 989061593")
+    lines.append(RULE)
+
+    print("\n".join(lines))
+    return 0 if ok else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     _force_utf8_output()
 
@@ -238,6 +339,11 @@ def main(argv: list[str] | None = None) -> int:
         "company_number",
         nargs="?",
         help="9-digit Norwegian organization number, e.g. 989061593",
+    )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Check the setup and report what is missing.",
     )
     parser.add_argument(
         "--web",
@@ -282,10 +388,13 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Removed {removed} cached response(s).")
         return 0
 
+    if args.check:
+        return _check_setup()
+
     if not args.company_number:
         parser.error(
             "an organization number is required "
-            "(or use --clear-cache)"
+            "(or use --check, or --clear-cache)"
         )
 
     try:

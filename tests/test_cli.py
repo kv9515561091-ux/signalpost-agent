@@ -1,0 +1,93 @@
+"""Setup diagnostics.
+
+`--check` exists so nobody has to type Python into a shell to find out
+whether their setup works. If it is wrong, it is worse than useless: it
+sends someone editing code when their problem is a missing key.
+"""
+
+import io
+import unittest
+from contextlib import redirect_stdout
+from unittest.mock import patch
+
+from src.__main__ import main
+
+
+def run(*args):
+    buffer = io.StringIO()
+    with redirect_stdout(buffer):
+        code = main(list(args))
+    return code, buffer.getvalue()
+
+
+class CheckTests(unittest.TestCase):
+    def test_check_requires_no_organization_number(self):
+        code, out = run("--check")
+        self.assertIn("SETUP CHECK", out)
+        self.assertIn(code, (0, 1))
+
+    def test_check_confirms_the_registry_spine_path_always_works(self):
+        # Even a fully unconfigured machine must be told what it can do.
+        _, out = run("--check")
+        self.assertIn("python -m src.agent 989061593", out)
+
+    def test_check_reports_the_active_provider(self):
+        with patch("src.llm.provider_name", return_value="openai_compatible"):
+            with patch(
+                "src.llm.describe",
+                return_value="openai_compatible:nvidia/test (thinking off)",
+            ):
+                _, out = run("--check")
+        self.assertIn("openai_compatible:nvidia/test", out)
+
+    def test_check_explains_a_missing_key(self):
+        import os
+
+        with patch.dict(os.environ, {}, clear=True):
+            with patch("src.llm.provider_name", return_value=None):
+                with patch(
+                    "src.llm.unavailable_reason",
+                    return_value="No LLM configured. Set NVIDIA_API_KEY in .env",
+                ):
+                    _, out = run("--check")
+        self.assertIn("NVIDIA_API_KEY", out)
+
+    def test_check_never_leaks_key_material(self):
+        import os
+
+        _, out = run("--check")
+        for name in ("TINYFISH_API_KEY", "NVIDIA_API_KEY", "ANTHROPIC_API_KEY"):
+            value = os.getenv(name)
+            if value and len(value) > 8:
+                self.assertNotIn(value, out)
+        # The report names the variables, never their values.
+        self.assertNotIn("sk-ant-", out)
+        self.assertNotIn("nvapi-", out)
+
+
+class ArgumentTests(unittest.TestCase):
+    def test_missing_number_is_an_error_not_a_traceback(self):
+        with self.assertRaises(SystemExit) as ctx:
+            run()
+        self.assertNotEqual(ctx.exception.code, 0)
+
+    def test_clear_cache_needs_no_number(self):
+        with patch("src.__main__.cache") as mock_cache:
+            mock_cache.clear.return_value = 3
+            code, out = run("--clear-cache")
+        self.assertEqual(code, 0)
+        self.assertIn("Removed 3", out)
+
+    def test_help_lists_the_diagnostic_flag(self):
+        with self.assertRaises(SystemExit):
+            run("--help")
+        # argparse writes to stdout; capture it to be sure the flag is there.
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            with self.assertRaises(SystemExit):
+                main(["--help"])
+        self.assertIn("--check", buffer.getvalue())
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -31,47 +31,71 @@ def anthropic_sdk(response):
 
 
 class ProviderSelectionTests(unittest.TestCase):
+    """Provider choice must follow configured credentials.
+
+    The Anthropic SDK resolves credentials from an on-disk profile even
+    with no environment variable set, so a machine with Claude Code
+    installed would otherwise use Claude despite the user configuring
+    NVIDIA. Every test here clears the ambient environment for that
+    reason.
+    """
+
+    def _env(self, **values):
+        import os as _os
+        return patch.dict(_os.environ, values, clear=True)
+
     def test_anthropic_wins_when_both_configured(self):
         sdk = anthropic_sdk(anthropic_response())
         with patch.object(llm, "_anthropic_sdk", sdk):
-            with patch.dict("os.environ", {
-                "ANTHROPIC_API_KEY": "sk-ant-x", "NVIDIA_API_KEY": "nvapi-x",
-            }, clear=False):
+            with self._env(ANTHROPIC_API_KEY="sk-ant-x", NVIDIA_API_KEY="nvapi-x"):
                 self.assertEqual(llm.provider_name(), "anthropic")
 
-    def test_nvidia_used_when_only_nvidia_key_present(self):
-        sdk = MagicMock(side_effect=llm.LLMUnavailable("no sdk"))
+    def test_configured_nvidia_key_beats_a_discoverable_sdk_profile(self):
+        # The real bug: SDK present with an ambient credential, only
+        # NVIDIA configured. NVIDIA must win.
+        sdk = anthropic_sdk(anthropic_response())
         with patch.object(llm, "_anthropic_sdk", sdk):
-            with patch.dict("os.environ", {"NVIDIA_API_KEY": "nvapi-x"}):
-                with patch.dict("os.environ", {}, clear=True):
-                    pass
-                self.assertIsNotNone(llm.provider_name())
+            with self._env(NVIDIA_API_KEY="nvapi-x"):
+                self.assertEqual(
+                    llm.provider_name(), "openai_compatible"
+                )
+                self.assertIn("nvidia", llm.describe())
+
+    def test_nothing_configured_falls_back_to_a_discoverable_profile(self):
+        sdk = anthropic_sdk(anthropic_response())
+        with patch.object(llm, "_anthropic_sdk", sdk):
+            with self._env():
+                self.assertEqual(llm.provider_name(), "anthropic")
+
+    def test_no_credentials_and_no_sdk_is_unavailable(self):
+        with patch.object(
+            llm, "_anthropic_sdk", side_effect=llm.LLMUnavailable("no sdk")
+        ):
+            with self._env():
+                self.assertFalse(llm.is_available())
 
     def test_override_forces_nvidia(self):
-        sdk = MagicMock(side_effect=llm.LLMUnavailable("no sdk"))
+        sdk = anthropic_sdk(anthropic_response())
         with patch.object(llm, "_anthropic_sdk", sdk):
-            with patch.dict("os.environ", {"NVIDIA_API_KEY": "nvapi-x"}):
-                with patch.dict(
-                    "os.environ", {"LLM_PROVIDER": "nvidia"}
-                ):
-                    self.assertEqual(
-                        llm.provider_name(), "openai_compatible"
-                    )
+            with self._env(
+                ANTHROPIC_API_KEY="sk-ant-x",
+                NVIDIA_API_KEY="nvapi-x",
+                LLM_PROVIDER="nvidia",
+            ):
+                self.assertEqual(
+                    llm.provider_name(), "openai_compatible"
+                )
 
-    def test_disabled_means_disabled(self):
-        with patch.dict("os.environ", {"LLM_PROVIDER": "none"}):
+    def test_override_none_disables(self):
+        with self._env(LLM_PROVIDER="none", NVIDIA_API_KEY="nvapi-x"):
             self.assertFalse(llm.is_available())
             self.assertIn("disabled", llm.unavailable_reason())
 
     def test_no_keys_reports_how_to_configure(self):
         with patch.object(
-            llm, "_anthropic_sdk",
-            side_effect=llm.LLMUnavailable("no sdk"),
+            llm, "_anthropic_sdk", side_effect=llm.LLMUnavailable("no sdk")
         ):
-            with patch.dict(
-                "os.environ", {}, clear=True
-            ):
-                self.assertFalse(llm.is_available())
+            with self._env():
                 reason = llm.unavailable_reason()
                 self.assertIn("ANTHROPIC_API_KEY", reason)
                 self.assertIn("NVIDIA_API_KEY", reason)
@@ -80,14 +104,13 @@ class ProviderSelectionTests(unittest.TestCase):
         with patch.object(
             llm, "_anthropic_sdk", side_effect=llm.LLMUnavailable("no sdk")
         ):
-            with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "sk-ant-x"}):
-                with patch.dict("os.environ", {"LLM_PROVIDER": ""}):
-                    self.assertIn(
-                        "requirements-llm.txt", llm.unavailable_reason()
-                    )
+            with self._env(ANTHROPIC_API_KEY="sk-ant-x"):
+                self.assertIn(
+                    "requirements-llm.txt", llm.unavailable_reason()
+                )
 
     def test_describe_is_human_readable(self):
-        with patch.dict("os.environ", {"LLM_PROVIDER": "none"}):
+        with self._env(LLM_PROVIDER="none"):
             self.assertEqual(llm.describe(), "none")
 
 
