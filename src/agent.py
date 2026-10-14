@@ -547,12 +547,26 @@ def _describe_fetch_failure(exc: Exception) -> str:
     return f"{type(exc).__name__}: {exc}"
 
 
+# Extraction depth.
+#
+# These bound cost and rate-limit pressure, not evidence quality: the
+# identity gate runs before either is consulted, so widening them widens
+# how much is *considered*, never what is *trusted*.
+#
+# Sources beyond roughly six are mostly directories repeating what
+# Enhetsregisteret already states, so past that point extra sources buy
+# redundancy rather than information. Pages can exceed sources because
+# one page costs a model call while a source costs a search.
+DEFAULT_MAX_SOURCES = 6
+DEFAULT_MAX_PAGES = 10
+
+
 def _apply_extraction(
     profile: CompanyProfile,
     identity: CompanyIdentity,
     *,
-    max_sources: int = 3,
-    max_pages: int = 4,
+    max_sources: int = DEFAULT_MAX_SOURCES,
+    max_pages: int = DEFAULT_MAX_PAGES,
 ) -> None:
     """Read verified pages and extract publishable facts from them.
 
@@ -706,6 +720,8 @@ def build_profile(
     include_extraction: bool = False,
     include_narrative: bool = False,
     use_llm: bool = True,
+    max_sources: int = DEFAULT_MAX_SOURCES,
+    max_pages: int = DEFAULT_MAX_PAGES,
 ) -> CompanyProfile:
     """Build a verified company profile from a Norwegian org number.
 
@@ -721,6 +737,12 @@ def build_profile(
             deterministic summary when no LLM is configured.
         use_llm: Whether to permit LLM calls at all. ``False`` forces
             fully deterministic behaviour.
+        max_sources: Source discovery ceiling. Costs scale linearly
+            with it, and past roughly six the marginal sources are
+            mostly directories that add nothing the registry does not
+            already say.
+        max_pages: Page-reading ceiling. Bounds both cost and rate-limit
+            pressure, since each page costs a model call.
 
     Raises:
         InvalidCompanyNumber: Malformed number or failed MOD-11 checksum.
@@ -831,7 +853,9 @@ def build_profile(
         _apply_web_enrichment(profile, company)
 
         if include_extraction:
-            _apply_extraction(profile, identity)
+            _apply_extraction(
+                profile, identity, max_sources=max_sources, max_pages=max_pages
+            )
 
     if include_narrative:
         profile.explanation = explain(profile, use_llm=use_llm).to_dict()
