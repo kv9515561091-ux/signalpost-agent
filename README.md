@@ -21,6 +21,8 @@ describes, and a confidence bounded by how authoritative that source is.
 
 ```bash
 pip install -r requirements.txt
+# or, for the console scripts and tool config:
+pip install -e ".[dev]"
 
 python -m src.agent --check                         # is my setup right?
 python -m src.agent 989061593                      # registry spine only
@@ -38,7 +40,9 @@ python run_batch.py --extract --max-sources 4 --max-pages 6
 python run_batch.py --no-llm                       # deterministic, free
 python -m src.agent 989061593 --extract --max-crawl-links 0   # no crawl
 
-python -m unittest discover -s tests               # 354 tests
+python -m unittest discover -s tests               # 369 tests
+ruff check .                                         # lint
+mypy                                                 # types (advisory)
 ```
 
 The enrichment flags — `--web`, `--extract`, `--narrate`, `--no-llm`,
@@ -193,8 +197,8 @@ will happily produce:
   published is not a new discovery, so it is dropped as redundant.
 - **Cross-page deduplication.** The same statement from six sources is
   published once.
-- **Business-only.** Personal-biography content is out of scope, so the
-  prompt excludes it.
+- **Business-only.** Personal biography is refused in code, not by
+  instruction. See below.
 - **Official website first.** The registered domain is seeded as a
   Tier-2 source ahead of search results, since it is the strongest thing
   the agent can find.
@@ -235,6 +239,36 @@ Measured on Equinor: 3 facts on one page → 12 after raising the caps →
 **26 across three pages** — headcount, geographic footprint, portfolio and
 market position, rather than press releases.
 
+### 5b. Personal biography is refused, not prompted against
+
+The prompt tells the model not to report someone's family, health or
+personal history. That instruction is the weakest link in the pipeline:
+the quote check proves a sentence exists on the page, not that the
+sentence is *about the company*. A page mixing a founder's CV with a
+company description passes identity, passes the quote check, and then
+contributes the CV.
+
+So `_is_personal_content` refuses it in code, with the reason recorded in
+`extraction_rejected` like every other refusal.
+
+False positives are the real risk — a filter that eats legitimate company
+facts is worse than no filter, because it looks like working. These all
+survive, and each is a test:
+
+```
+A family-owned Norwegian manufacturer.          → kept
+Healthcare services for hospitals and clinics.  → kept
+Products for children's hospitals.              → kept
+Hobbies are our business.                        → kept
+```
+
+The test is a *distinct* personal signal plus a density floor, not
+density alone. Density was tried first and refused real biography: "He
+is married to Anna and they have three children" is only 2 personal
+words across 10, because pronouns carry the sentence while the actual
+signal — "children" — is one word. Tuning the threshold down to catch it
+then put "our founder's wife Anna led the charity" at 1 word in 10.
+
 ### 6. Conflicts are preserved, not resolved by convenience
 
 When sources disagree the registry wins — but the losing value is kept and
@@ -265,9 +299,10 @@ FY2023 are not mistaken for a disagreement.
 - **The Anthropic path is still mock-tested only.** The NVIDIA path has
   been verified live end-to-end; Anthropic has not, because no key was
   available. Treat the first Anthropic run as a shakedown.
-- **Personal-detail filtering is prompt-level, not semantic.** The
-  business-only rule is an instruction to the model, not a classifier
-  deciding what is a person and what is a company.
+- **Personal-detail filtering is lexical, not semantic.** Biography is
+  refused by pattern match. It catches stated family, birth, death and
+  hobby facts; it will not catch a paragraph of someone else's story
+  written without those words.
 - **Facts concentrate in `business_summary`.** Fields like
   `recent_developments` appear only when a page supports them; expect the
   stable descriptive material to dominate.
@@ -302,15 +337,34 @@ src/
   ratelimit.py     per-process request pacing
   text.py          Norwegian-aware text folding
   batch.py         batch runner over a list of org numbers
+  batch_cli.py     batch argument parsing (`signalpost-batch`)
   tinyfish_search.py  search provider adapter
   request_tracker.py  outbound request budget
-  __main__.py      CLI
-tests/             354 tests, no network required
+  __main__.py      single-company CLI (`signalpost`)
+run_batch.py       shim preserving `python run_batch.py`
+tests/             369 tests, no network required
 ```
+
+`pyproject.toml` is the single source of truth for metadata,
+dependencies and tool configuration. `pip install .` installs two console
+scripts — `signalpost` and `signalpost-batch` — so the agent runs from
+anywhere without being invoked from the repository root.
+
+`requirements.txt` pins the runtime for CI. It exists because CI should
+test one known dependency set, not whatever a resolver picks today.
 
 Tests run on the standard library alone — `python -m unittest discover -s
 tests`. There is no development dependency to install. `pytest` also runs
 them unchanged if you prefer it.
+
+CI runs `ruff` as a gate and `mypy` as a report. mypy is advisory on
+purpose: the project shipped 369 tests and no type checking at all, and
+its first pass found nine issues — one of them a live bug, where the
+crawl gate compared an optional domain against a string and silently
+disabled the crawl for any company without a registered website. It now
+passes on all 26 source files. Making it a gate is a deliberate,
+incremental change rather than something to flip on in the same commit
+that introduces it.
 
 ## Configuration
 

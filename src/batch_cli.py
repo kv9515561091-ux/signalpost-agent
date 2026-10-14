@@ -23,7 +23,11 @@ from src.batch import (
 )
 from src.request_tracker import request_tracker
 
-PROG = "python run_batch.py"
+# Defaults to the installed console script name, because that is how
+# most people will invoke it. argparse falls back to sys.argv[0], which
+# would print `batch_cli.py` or a bare `__main__.py` depending on how the
+# module was reached.
+PROG = "signalpost-batch"
 
 
 def build_parser() -> argparse.ArgumentParser:

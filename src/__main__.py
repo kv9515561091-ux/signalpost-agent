@@ -14,6 +14,7 @@ import argparse
 import contextlib
 import json
 import sys
+from pathlib import Path
 
 from src.agent import (
     DEFAULT_MAX_CRAWL_LINKS,
@@ -339,7 +340,13 @@ def build_parser() -> argparse.ArgumentParser:
     unchecked until a reader notices it is false.
     """
     parser = argparse.ArgumentParser(
-        prog="python -m src.agent",
+        # Falls back to sys.argv[0] when reached as `python -m src.agent`,
+        # and picks up the installed script name otherwise.
+        prog=(
+            "signalpost"
+            if Path(sys.argv[0]).stem in ("signalpost", "signalpost.exe")
+            else "python -m src.agent"
+        ),
         description=(
             "Build a verified company profile from a Norwegian "
             "organization number."
