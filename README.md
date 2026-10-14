@@ -36,13 +36,21 @@ python run_batch.py
 python run_batch.py --web --extract --narrate
 python run_batch.py --extract --max-sources 4 --max-pages 6
 python run_batch.py --no-llm                       # deterministic, free
+python -m src.agent 989061593 --extract --max-crawl-links 0   # no crawl
 
 python -m unittest discover -s tests               # 354 tests
 ```
 
-Both entry points take the same flags, deliberately. A separate
-vocabulary per entry point is how `--extract` ends up meaning something
-different in each.
+The enrichment flags — `--web`, `--extract`, `--narrate`, `--no-llm`,
+`--max-sources`, `--max-pages`, `--max-crawl-links` — are identical in
+both, deliberately. A separate vocabulary per entry point is how
+`--extract` ends up meaning something different in each. `tests/test_cli.py`
+asserts the shared set stays shared and that the differences are only the
+intentional ones.
+
+What differs, on purpose: `--input`, `--output` and `--delay` exist only
+for batches; `--check`, `--clear-cache`, `--json` and `-v` only for a
+single company.
 
 Optional LLM features use either provider. Put one key in `.env`:
 
@@ -317,12 +325,15 @@ them unchanged if you prefer it.
 | `NVIDIA_THINKING` | no | `true` to leave the model's reasoning on |
 | `NVIDIA_RPM` | no | Request pacing, default 30. `0` disables |
 
-Extraction depth, same defaults in both entry points: **6 sources and 10
-pages** per company. Sources stop at six because past that the marginal
-results are directories repeating Enhetsregisteret; pages exceed sources
-because a source costs a search while a page costs a model call. These
-bound cost, never trust — the identity gate runs first, so widening them
-widens what is *considered*, not what is *accepted*.
+Extraction depth, same defaults in both entry points and settable in
+both: **6 sources, 10 pages and 5 crawl links** per company. Sources stop
+at six because past that the marginal results are directories repeating
+Enhetsregisteret; pages exceed sources because a source costs a search
+while a page costs a model call. `--max-crawl-links 0` disables the crawl
+entirely, leaving homepage-only behaviour.
+
+These bound cost, never trust — the identity gate runs first, so widening
+them widens what is *considered*, not what is *accepted*.
 
 `ANTHROPIC_AUTH_TOKEN` and `CLAUDE_CODE_OAUTH_TOKEN` are also honoured.
 

@@ -7,7 +7,11 @@ opt-in, because enrichment costs money per call.
 
 import argparse
 
-from src.agent import DEFAULT_MAX_PAGES, DEFAULT_MAX_SOURCES
+from src.agent import (
+    DEFAULT_MAX_CRAWL_LINKS,
+    DEFAULT_MAX_PAGES,
+    DEFAULT_MAX_SOURCES,
+)
 from src.batch import (
     DEFAULT_DELAY_SECONDS,
     load_company_numbers,
@@ -60,6 +64,17 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_MAX_PAGES,
         metavar="N",
         help=f"Pages per company (default {DEFAULT_MAX_PAGES}).",
+    )
+    parser.add_argument(
+        "--max-crawl-links",
+        type=int,
+        default=DEFAULT_MAX_CRAWL_LINKS,
+        metavar="N",
+        help=(
+            "Same-domain follow-ups read from a verified first-party "
+            f"page (default {DEFAULT_MAX_CRAWL_LINKS}). 0 disables the "
+            "crawl."
+        ),
     )
     parser.add_argument(
         "--input",
@@ -143,6 +158,7 @@ def main(argv: list[str] | None = None) -> int:
         use_llm=use_llm,
         max_sources=args.max_sources,
         max_pages=args.max_pages,
+        max_crawl_links=args.max_crawl_links,
         progress=report,
     )
 

@@ -65,6 +65,100 @@ class CheckTests(unittest.TestCase):
         self.assertNotIn("nvapi-", out)
 
 
+class ParityTests(unittest.TestCase):
+    """The two entry points must not drift into separate vocabularies.
+
+    The README claimed they took the same flags. They did not: the single
+    CLI had no depth flags at all, so ``--max-sources`` meant something
+    in one entry point and nothing in the other. This asserts the shared
+    half stays shared.
+    """
+
+    # Flags that control enrichment, and therefore cost money. These must
+    # exist, identically, in both entry points.
+    SHARED = (
+        "--web",
+        "--extract",
+        "--narrate",
+        "--no-llm",
+        "--max-sources",
+        "--max-pages",
+        "--max-crawl-links",
+    )
+
+    @staticmethod
+    def _flags(parser):
+        return {
+            option
+            for action in parser._actions
+            for option in action.option_strings
+        }
+
+    def test_shared_flags_exist_in_both(self):
+        import run_batch
+
+        from src.__main__ import build_parser as single
+
+        single_flags = self._flags(single())
+        batch_flags = self._flags(run_batch.build_parser())
+
+        for flag in self.SHARED:
+            self.assertIn(flag, single_flags, f"{flag} missing from single CLI")
+            self.assertIn(flag, batch_flags, f"{flag} missing from batch CLI")
+
+    def test_shared_defaults_agree(self):
+        import run_batch
+
+        from src.__main__ import build_parser as single
+
+        single_args = single().parse_args([])
+        batch_args = run_batch.build_parser().parse_args([])
+
+        for field in ("max_sources", "max_pages", "max_crawl_links"):
+            self.assertEqual(
+                getattr(single_args, field),
+                getattr(batch_args, field),
+                f"{field} defaults disagree",
+            )
+
+    def test_batch_only_flags_are_deliberate(self):
+        # Recorded so a new batch-only flag is a conscious choice rather
+        # than an accident.
+        import run_batch
+
+        from src.__main__ import build_parser as single
+
+        self.assertEqual(
+            self._flags(run_batch.build_parser()) - self._flags(single()),
+            {"--input", "--output", "--delay"},
+        )
+
+    def test_single_only_flags_are_deliberate(self):
+        import run_batch
+
+        from src.__main__ import build_parser as single
+
+        self.assertEqual(
+            self._flags(single()) - self._flags(run_batch.build_parser()),
+            {"--check", "--json", "-v", "--verbose", "--clear-cache"},
+        )
+
+    def test_max_crawl_links_zero_is_accepted(self):
+        import run_batch
+
+        from src.__main__ import build_parser as single
+
+        self.assertEqual(
+            single().parse_args(["--max-crawl-links", "0"]).max_crawl_links, 0
+        )
+        self.assertEqual(
+            run_batch.build_parser()
+            .parse_args(["--max-crawl-links", "0"])
+            .max_crawl_links,
+            0,
+        )
+
+
 class ArgumentTests(unittest.TestCase):
     def test_missing_number_is_an_error_not_a_traceback(self):
         with self.assertRaises(SystemExit) as ctx:

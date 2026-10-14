@@ -14,7 +14,12 @@ import argparse
 import json
 import sys
 
-from src.agent import build_profile
+from src.agent import (
+    DEFAULT_MAX_CRAWL_LINKS,
+    DEFAULT_MAX_PAGES,
+    DEFAULT_MAX_SOURCES,
+    build_profile,
+)
 from src.cache import cache
 from src.brreg import CompanyNotFound
 from src.http import NotFound
@@ -325,9 +330,13 @@ def _check_setup() -> int:
     return 0 if ok else 1
 
 
-def main(argv: list[str] | None = None) -> int:
-    _force_utf8_output()
+def build_parser() -> argparse.ArgumentParser:
+    """The single-company argument parser.
 
+    Split out from :func:`main` so the batch entry point can assert that
+    the two share an enrichment vocabulary, rather than that claim going
+    unchecked until a reader notices it is false.
+    """
     parser = argparse.ArgumentParser(
         prog="python -m src.agent",
         description=(
@@ -380,7 +389,39 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Delete cached registry responses and exit.",
     )
+    parser.add_argument(
+        "--max-sources",
+        type=int,
+        default=DEFAULT_MAX_SOURCES,
+        metavar="N",
+        help=f"Sources per company (default {DEFAULT_MAX_SOURCES}).",
+    )
+    parser.add_argument(
+        "--max-pages",
+        type=int,
+        default=DEFAULT_MAX_PAGES,
+        metavar="N",
+        help=f"Pages per company (default {DEFAULT_MAX_PAGES}).",
+    )
+    parser.add_argument(
+        "--max-crawl-links",
+        type=int,
+        default=DEFAULT_MAX_CRAWL_LINKS,
+        metavar="N",
+        help=(
+            "Same-domain follow-ups read from a verified first-party "
+            f"page (default {DEFAULT_MAX_CRAWL_LINKS}). 0 disables the "
+            "crawl."
+        ),
+    )
 
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    _force_utf8_output()
+
+    parser = build_parser()
     args = parser.parse_args(argv)
 
     if args.clear_cache:
@@ -404,6 +445,9 @@ def main(argv: list[str] | None = None) -> int:
             include_extraction=args.extract,
             include_narrative=args.narrate,
             use_llm=not args.no_llm,
+            max_sources=args.max_sources,
+            max_pages=args.max_pages,
+            max_crawl_links=args.max_crawl_links,
         )
     except InvalidCompanyNumber as exc:
         print(f"Invalid organization number: {exc}", file=sys.stderr)

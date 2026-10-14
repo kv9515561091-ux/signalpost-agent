@@ -18,7 +18,12 @@ import time
 from pathlib import Path
 from typing import Any
 
-from src.agent import DEFAULT_MAX_PAGES, DEFAULT_MAX_SOURCES, build_profile
+from src.agent import (
+    DEFAULT_MAX_CRAWL_LINKS,
+    DEFAULT_MAX_PAGES,
+    DEFAULT_MAX_SOURCES,
+    build_profile,
+)
 from src.orgnumber import InvalidCompanyNumber
 
 DEFAULT_DELAY_SECONDS = 0.4
@@ -46,6 +51,7 @@ def process_companies(
     use_llm: bool = True,
     max_sources: int = DEFAULT_MAX_SOURCES,
     max_pages: int = DEFAULT_MAX_PAGES,
+    max_crawl_links: int = DEFAULT_MAX_CRAWL_LINKS,
     progress=None,
 ) -> list[dict[str, Any]]:
     """Build a profile for each org number and persist the results.
@@ -60,6 +66,8 @@ def process_companies(
             is the safe way to measure enrichment's cost.
         max_sources: Source ceiling per company.
         max_pages: Page ceiling per company.
+        max_crawl_links: Same-domain follow-ups read from each verified
+            first-party page. Zero disables the crawl.
         progress: Optional callback ``(index, total, raw, profile)`` for
             per-company reporting.
 
@@ -92,6 +100,7 @@ def process_companies(
                 use_llm=use_llm,
                 max_sources=max_sources,
                 max_pages=max_pages,
+                max_crawl_links=max_crawl_links,
             )
             record = profile.model_dump(mode="json")
             results.append(record)

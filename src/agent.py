@@ -26,6 +26,7 @@ from pydantic import BaseModel, Field
 
 from src.brreg import get_company
 from src.conflicts import FieldValue, conflict_report, reconcile_all
+from src.crawl import DEFAULT_MAX_CRAWL_LINKS as _DEFAULT_MAX_CRAWL_LINKS
 from src.discovery import discover_sources
 from src.explain import explain
 from src.evidence import Evidence, FactRecord
@@ -563,7 +564,11 @@ DEFAULT_MAX_PAGES = 10
 # Follow-ups read from a verified first-party page. Small on purpose: the
 # homepage's best links are already a strong set, and each one costs a
 # model call.
-DEFAULT_MAX_CRAWL_LINKS = 5
+#
+# Imported rather than redefined. This constant used to exist in both
+# here and crawl.py, so the cap the orchestrator applied and the cap the
+# planner documented could silently disagree.
+DEFAULT_MAX_CRAWL_LINKS = _DEFAULT_MAX_CRAWL_LINKS
 
 
 def _apply_extraction(
