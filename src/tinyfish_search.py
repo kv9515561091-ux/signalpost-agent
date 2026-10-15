@@ -23,11 +23,14 @@ import os
 from typing import Any
 
 import requests
-from dotenv import load_dotenv
 
 from src.cache import SEARCH_TTL_SECONDS, cached_json
+from src.config import load_env
 
-load_dotenv()
+# Reads the repo's .env from the working directory outward, rather than
+# searching upward from this file -- which found nothing once the package
+# was installed.
+load_env()
 
 TINYFISH_SEARCH_URL = "https://api.search.tinyfish.ai"
 

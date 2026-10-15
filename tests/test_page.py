@@ -75,7 +75,7 @@ class UrlGuardTests(unittest.TestCase):
                 validate_url(bad)
 
     def test_adds_scheme_when_missing(self):
-        with patch("src.page._resolve_is_public", return_value=True):
+        with patch("src.netguard.resolve_is_public", return_value=True):
             self.assertEqual(
                 validate_url("example.no/about"), "https://example.no/about"
             )
@@ -102,7 +102,7 @@ class FetchPageTests(unittest.TestCase):
         )
         from src.page import fetch_page
 
-        with patch("src.page._resolve_is_public", return_value=True):
+        with patch("src.netguard.resolve_is_public", return_value=True):
             page = fetch_page("https://example.no/about")
 
         self.assertIn("Om oss", page.text)
@@ -120,7 +120,7 @@ class FetchPageTests(unittest.TestCase):
         )
         from src.page import fetch_page
 
-        with patch("src.page._resolve_is_public", return_value=True):
+        with patch("src.netguard.resolve_is_public", return_value=True):
             page = fetch_page("https://example.no/about")
 
         self.assertTrue(page.truncated)

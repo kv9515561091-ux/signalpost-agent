@@ -16,13 +16,11 @@ reason over, not markup, and an extra parser is not worth the dependency.
 from __future__ import annotations
 
 import html
-import ipaddress
 import re
-import socket
 from dataclasses import dataclass, field
-from urllib.parse import urlparse
 
 from src.http import fetch_bytes
+from src.netguard import UnsafeUrl, validate_url
 
 REQUEST_TIMEOUT = 20
 MAX_BYTES = 2_000_000
@@ -53,10 +51,6 @@ _HREF = re.compile(r"""<a\b[^>]*?\shref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))"
                    re.IGNORECASE)
 
 
-class UnsafeUrl(ValueError):
-    """The URL is malformed, non-HTTP, or resolves to a private address."""
-
-
 @dataclass
 class Page:
     url: str
@@ -65,60 +59,6 @@ class Page:
     retrieved_at: str
     truncated: bool = False
     links: list[str] = field(default_factory=list)
-
-
-def _resolve_is_public(host: str) -> bool:
-    """True when every address the host resolves to is publicly routable.
-
-    An unresolvable host is treated as unsafe: there is nothing useful
-    the agent could fetch from it anyway.
-    """
-    try:
-        infos = socket.getaddrinfo(host, None)
-    except socket.gaierror:
-        return False
-
-    addresses = {info[4][0] for info in infos}
-    if not addresses:
-        return False
-
-    for address in addresses:
-        try:
-            ip = ipaddress.ip_address(address)
-        except ValueError:
-            return False
-        if (
-            ip.is_private
-            or ip.is_loopback
-            or ip.is_link_local
-            or ip.is_reserved
-            or ip.is_multicast
-            or ip.is_unspecified
-        ):
-            return False
-    return True
-
-
-def validate_url(url: str) -> str:
-    """Return ``url`` if it is safe to fetch, else raise."""
-    if not url or not isinstance(url, str):
-        raise UnsafeUrl(f"not a URL: {url!r}")
-
-    if not url.startswith(("http://", "https://")):
-        url = "https://" + url
-
-    parsed = urlparse(url)
-    if parsed.scheme not in ("http", "https"):
-        raise UnsafeUrl(f"unsupported scheme: {parsed.scheme}")
-    if not parsed.hostname:
-        raise UnsafeUrl(f"no host in {url!r}")
-
-    if not _resolve_is_public(parsed.hostname):
-        raise UnsafeUrl(
-            f"{parsed.hostname} does not resolve to a public address"
-        )
-
-    return url
 
 
 def extract_links(markup: str) -> list[str]:

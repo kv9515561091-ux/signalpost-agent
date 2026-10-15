@@ -12,9 +12,17 @@ from __future__ import annotations
 
 import time
 from typing import Any
+from urllib.parse import urljoin
 
 import requests
 
+from src.netguard import (
+    DEFAULT_MAX_REDIRECTS,
+    TooManyRedirects,
+    UnsafeUrl,
+    redirect_target,
+    validate_url,
+)
 from src.request_tracker import request_tracker
 
 DEFAULT_TIMEOUT = 20
@@ -26,6 +34,66 @@ class NotFound(Exception):
     """The endpoint responded, but has no record for this key."""
 
 
+def get_following_redirects(
+    url: str,
+    *,
+    timeout: int = DEFAULT_TIMEOUT,
+    max_redirects: int = DEFAULT_MAX_REDIRECTS,
+    headers: dict[str, str] | None = None,
+    stream: bool = False,
+    validate: bool = True,
+):
+    """GET ``url``, validating every redirect hop.
+
+    Redirects are followed by hand rather than by ``requests`` because
+    the library does not re-check them. A URL that passed the private
+    address guard can redirect to one that did not, so a discovered
+    ``https://example.com`` becomes ``http://169.254.169.254/`` and
+    instance metadata is read. Validating only the URL the caller
+    supplied guards the request that was never sent.
+
+    Args:
+        validate: When ``False`` the address guard is skipped. Only the
+            registry sets this, for a fixed set of Brreg endpoints that
+            cannot be pointed anywhere by a search result.
+
+    Raises:
+        UnsafeUrl: Any hop resolves to a private address or is malformed.
+        TooManyRedirects: The chain exceeded ``max_redirects``.
+    """
+    current = validate_url(url) if validate else url
+    remaining = max_redirects
+
+    while True:
+        response = requests.get(
+            current,
+            timeout=timeout,
+            headers=headers,
+            stream=stream,
+            # Handled here, so the library must not also follow them.
+            allow_redirects=False,
+        )
+
+        if response.status_code in (301, 302, 303, 307, 308):
+            location = redirect_target(response, max_redirects=remaining)
+            if location is None:
+                return response
+
+            remaining -= 1
+            next_url = urljoin(current, location)
+
+            # Every hop is re-validated, which is the entire reason this
+            # function exists.
+            if validate:
+                next_url = validate_url(next_url)
+
+            response.close()
+            current = next_url
+            continue
+
+        return response
+
+
 def fetch_json(
     url: str,
     *,
@@ -33,6 +101,8 @@ def fetch_json(
     attempts: int = DEFAULT_ATTEMPTS,
     accept_missing: bool = False,
     headers: dict[str, str] | None = None,
+    max_redirects: int = DEFAULT_MAX_REDIRECTS,
+    validate: bool = True,
 ) -> Any:
     """GET ``url`` and decode the JSON body.
 
@@ -43,10 +113,13 @@ def fetch_json(
         headers: Extra headers merged over the default ``Accept``. The
             search API authenticates this way; credentials are never
             placed in the URL, because URLs get written to the cache.
+        validate: Whether to apply the private-address guard to every
+            hop. Off only for fixed registry endpoints.
 
     Raises:
         NotFound: On 404 when ``accept_missing`` is ``False``.
         requests.RequestException: After all attempts fail.
+        UnsafeUrl: A hop points somewhere internal.
     """
     last_error: Exception | None = None
 
@@ -58,10 +131,12 @@ def fetch_json(
         try:
             request_tracker.record()
 
-            response = requests.get(
+            response = get_following_redirects(
                 url,
                 timeout=timeout,
+                max_redirects=max_redirects,
                 headers=request_headers,
+                validate=validate,
             )
 
             if response.status_code == 404:
@@ -76,9 +151,11 @@ def fetch_json(
             response.encoding = "utf-8"
             return response.json()
 
-        except NotFound:
+        except (NotFound, UnsafeUrl):
+            # Both are permanent: the record does not exist, or the URL
+            # is refused. Retrying either only spends the budget.
             raise
-        except (requests.RequestException, ValueError) as exc:
+        except (requests.RequestException, ValueError, TooManyRedirects) as exc:
             last_error = exc
             if attempt + 1 < attempts:
                 time.sleep(RETRY_BACKOFF_SECONDS)
@@ -115,22 +192,31 @@ def fetch_bytes(
     attempts: int = DEFAULT_ATTEMPTS,
     max_bytes: int = 10_000_000,
     headers: dict[str, str] | None = None,
+    max_redirects: int = DEFAULT_MAX_REDIRECTS,
+    validate: bool = True,
 ) -> ByteResponse:
     """GET ``url``, streaming and capping the body at ``max_bytes``.
 
     Streamed rather than buffered so an unexpectedly large or endless
     response cannot exhaust memory.
+
+    Every redirect hop is validated. This is the path the crawler takes,
+    so a first-party site that redirects to an internal address would
+    otherwise be followed there without the guard ever being consulted.
     """
     last_error: Exception | None = None
 
     for attempt in range(attempts):
         try:
             request_tracker.record()
-            with requests.get(
+
+            with get_following_redirects(
                 url,
                 timeout=timeout,
+                max_redirects=max_redirects,
                 headers=headers or {"Accept": "*/*"},
                 stream=True,
+                validate=validate,
             ) as response:
                 response.raise_for_status()
 
@@ -150,7 +236,11 @@ def fetch_bytes(
                     status_code=response.status_code,
                 )
 
-        except (requests.RequestException, ValueError) as exc:
+        except UnsafeUrl:
+            # Permanent: the address is refused, and retrying cannot
+            # change that.
+            raise
+        except (requests.RequestException, ValueError, TooManyRedirects) as exc:
             last_error = exc
             if attempt + 1 < attempts:
                 time.sleep(RETRY_BACKOFF_SECONDS)

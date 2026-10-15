@@ -35,12 +35,9 @@ from typing import Any
 # The search provider happens to load it at import time, but extraction
 # and narration run without --web, so relying on that would make a key
 # in .env silently invisible on exactly the paths that need it.
-try:
-    from dotenv import load_dotenv
+from src.config import load_env as _load_env
 
-    load_dotenv()
-except ImportError:  # pragma: no cover - dotenv is a runtime dependency
-    pass
+_load_env()
 
 ANTHROPIC_MODEL = "claude-opus-5"
 
