@@ -1,0 +1,1642 @@
+{
+  "_comment": "Recorded HTTP responses for the end-to-end test. Registry entries are raw API bodies. Regenerate with: python tools/record_fixture.py",
+  "company_number": "923609016",
+  "company_view": {
+    "company_name": "EQUINOR ASA",
+    "website": "www.equinor.com"
+  },
+  "query": "EQUINOR ASA 923609016",
+  "registry": {
+    "company": {
+      "_links": {
+        "self": {
+          "href": "https://data.brreg.no/enhetsregisteret/api/enheter/923609016"
+        }
+      },
+      "aktivitet": [
+        "Selv, eller gjennom deltakelse i eller sammen med andre selskaper å",
+        "utvikle, produsere og markedsføre ulike former for energi, avledede",
+        "produkter og tjenester, samt annen virksomhet. Utleie av bygg og",
+        "anlegg."
+      ],
+      "antallAnsatte": 21231,
+      "erIKonsern": true,
+      "forretningsadresse": {
+        "adresse": [
+          "Forusbeen 50"
+        ],
+        "kommune": "STAVANGER",
+        "kommunenummer": "1103",
+        "land": "Norge",
+        "landkode": "NO",
+        "postnummer": "4035",
+        "poststed": "STAVANGER"
+      },
+      "frivilligMvaRegistrertBeskrivelser": [
+        "Utleier av bygg eller anlegg"
+      ],
+      "harRegistrertAntallAnsatte": true,
+      "historiskeNavn": [
+        {
+          "fraDato": "1995-03-12 16:23:00",
+          "navn": "Den norske stats oljeselskap a.s",
+          "tilDato": "2001-05-11 08:32:09"
+        },
+        {
+          "fraDato": "2001-05-11 08:32:09",
+          "navn": "STATOIL ASA",
+          "tilDato": "2007-10-01 06:44:33"
+        },
+        {
+          "fraDato": "2007-10-01 06:44:33",
+          "navn": "STATOILHYDRO ASA",
+          "tilDato": "2009-11-02 07:56:24"
+        },
+        {
+          "fraDato": "2009-11-02 07:56:24",
+          "navn": "STATOIL ASA",
+          "tilDato": "2018-05-16 07:05:45"
+        }
+      ],
+      "hjemmeside": "www.equinor.com",
+      "institusjonellSektorkode": {
+        "beskrivelse": "Statlig eide aksjeselskaper mv.",
+        "kode": "1120"
+      },
+      "kapital": {
+        "antallAksjer": 2390749040,
+        "belop": 5976872600.0,
+        "innfortDato": "2026-07-02",
+        "type": "Aksjekapital",
+        "valuta": "NOK"
+      },
+      "konkurs": false,
+      "maalform": "Bokmål",
+      "naeringskode1": {
+        "beskrivelse": "Utvinning av råolje",
+        "kode": "06.100"
+      },
+      "naeringskode2": {
+        "beskrivelse": "Utvinning av naturgass",
+        "kode": "06.200"
+      },
+      "naeringskode3": {
+        "beskrivelse": "Produksjon av raffinerte petroleumsprodukter og fossile brenselsprodukter",
+        "kode": "19.200"
+      },
+      "navn": "EQUINOR ASA",
+      "organisasjonsform": {
+        "_links": {
+          "self": {
+            "href": "https://data.brreg.no/enhetsregisteret/api/organisasjonsformer/ASA"
+          }
+        },
+        "beskrivelse": "Allmennaksjeselskap",
+        "kode": "ASA"
+      },
+      "organisasjonsnummer": "923609016",
+      "paategninger": [],
+      "postadresse": {
+        "adresse": [
+          "Postboks 8500"
+        ],
+        "kommune": "STAVANGER",
+        "kommunenummer": "1103",
+        "land": "Norge",
+        "landkode": "NO",
+        "postnummer": "4035",
+        "poststed": "STAVANGER"
+      },
+      "registreringsdatoAntallAnsatteEnhetsregisteret": "2026-10-13",
+      "registreringsdatoAntallAnsatteNAVAaregisteret": "2026-10-10",
+      "registreringsdatoEnhetsregisteret": "1995-03-12",
+      "registreringsdatoForetaksregisteret": "1988-04-28",
+      "registreringsdatoFrivilligMerverdiavgiftsregisteret": "2022-09-20",
+      "registreringsdatoMerverdiavgiftsregisteret": "1989-07-01",
+      "registreringsdatoMerverdiavgiftsregisteretEnhetsregisteret": "2022-09-20",
+      "registrertIForetaksregisteret": true,
+      "registrertIFrivillighetsregisteret": false,
+      "registrertIMvaregisteret": true,
+      "registrertIPartiregisteret": false,
+      "registrertIStiftelsesregisteret": false,
+      "respons_klasse": "Enhet",
+      "sisteInnsendteAarsregnskap": "2025",
+      "stiftelsesdato": "1972-09-18",
+      "telefon": "51 99 00 00",
+      "underAvvikling": false,
+      "underTvangsavviklingEllerTvangsopplosning": false,
+      "vedtektsdato": "2026-05-12",
+      "vedtektsfestetFormaal": [
+        "Å utvikle, produsere og markedsføre ulike former for energi, avledede",
+        "produkter og tjenester, samt annen virksomhet. Virksomheten kan også",
+        "drives gjennom deltakelse i eller i samarbeid med andre selskaper."
+      ]
+    },
+    "roles": {
+      "_links": {
+        "self": {
+          "href": "https://data.brreg.no/enhetsregisteret/api/enheter/923609016/roller"
+        },
+        "enhet": {
+          "href": "https://data.brreg.no/enhetsregisteret/api/enheter/923609016"
+        }
+      },
+      "rollegrupper": [
+        {
+          "roller": [
+            {
+              "avregistrert": false,
+              "person": {
+                "erDoed": false,
+                "fodselsdato": "1968-05-04",
+                "navn": {
+                  "etternavn": "Opedal",
+                  "fornavn": "Anders"
+                }
+              },
+              "rekkefolge": 0,
+              "type": {
+                "_links": {
+                  "self": {
+                    "href": "https://data.brreg.no/enhetsregisteret/api/roller/rolletyper/DAGL"
+                  }
+                },
+                "beskrivelse": "Daglig leder",
+                "kode": "DAGL"
+              }
+            }
+          ],
+          "sistEndret": "2020-11-02",
+          "type": {
+            "_links": {
+              "self": {
+                "href": "https://data.brreg.no/enhetsregisteret/api/roller/rollegruppetyper/DAGL"
+              }
+            },
+            "beskrivelse": "Daglig leder",
+            "kode": "DAGL"
+          }
+        },
+        {
+          "roller": [
+            {
+              "avregistrert": false,
+              "person": {
+                "erDoed": false,
+                "fodselsdato": "1960-04-26",
+                "navn": {
+                  "etternavn": "Roth",
+                  "fornavn": "Jarle Kjell"
+                }
+              },
+              "rekkefolge": 0,
+              "type": {
+                "_links": {
+                  "self": {
+                    "href": "https://data.brreg.no/enhetsregisteret/api/roller/rolletyper/LEDE"
+                  }
+                },
+                "beskrivelse": "Styrets leder",
+                "kode": "LEDE"
+              }
+            },
+            {
+              "avregistrert": true,
+              "person": {
+                "erDoed": false,
+                "fodselsdato": "1964-02-15",
+                "navn": {
+                  "etternavn": "Ruyter",
+                  "fornavn": "Finn Bjørn"
+                }
+              },
+              "rekkefolge": 1,
+              "type": {
+                "_links": {
+                  "self": {
+                    "href": "https://data.brreg.no/enhetsregisteret/api/roller/rolletyper/MEDL"
+                  }
+                },
+                "beskrivelse": "Styremedlem",
+                "kode": "MEDL"
+              }
+            },
+            {
+              "avregistrert": false,
+              "person": {
+                "erDoed": false,
+                "fodselsdato": "1960-07-08",
+                "navn": {
+                  "etternavn": "Bruun-Hanssen",
+                  "fornavn": "Haakon Stephen"
+                }
+              },
+              "rekkefolge": 2,
+              "type": {
+                "_links": {
+                  "self": {
+                    "href": "https://data.brreg.no/enhetsregisteret/api/roller/rolletyper/MEDL"
+                  }
+                },
+                "beskrivelse": "Styremedlem",
+                "kode": "MEDL"
+              }
+            },
+            {
+              "avregistrert": false,
+              "person": {
+                "erDoed": false,
+                "fodselsdato": "1974-04-09",
+                "navn": {
+                  "etternavn": "Lopes Larsen",
+                  "fornavn": "Fernanda"
+                }
+              },
+              "rekkefolge": 3,
+              "type": {
+                "_links": {
+                  "self": {
+                    "href": "https://data.brreg.no/enhetsregisteret/api/roller/rolletyper/MEDL"
+                  }
+                },
+                "beskrivelse": "Styremedlem",
+                "kode": "MEDL"
+              }
+            },
+            {
+              "avregistrert": false,
+              "person": {
+                "erDoed": false,
+                "fodselsdato": "1966-11-14",
+                "navn": {
+                  "etternavn": "Møllerstad",
+                  "fornavn": "Hilde"
+                }
+              },
+              "rekkefolge": 4,
+              "type": {
+                "_links": {
+                  "self": {
+                    "href": "https://data.brreg.no/enhetsregisteret/api/roller/rolletyper/MEDL"
+                  }
+                },
+                "beskrivelse": "Styremedlem",
+                "kode": "MEDL"
+              },
+              "valgtAv": {
+                "_links": {
+                  "self": {
+                    "href": "https://data.brreg.no/enhetsregisteret/api/roller/representanter/AREP"
+                  }
+                },
+                "beskrivelse": "Representant for de ansatte",
+                "kode": "AREP"
+              }
+            },
+            {
+              "avregistrert": false,
+              "person": {
+                "erDoed": false,
+                "fodselsdato": "1990-03-05",
+                "navn": {
+                  "etternavn": "Gundersen",
+                  "fornavn": "Frank",
+                  "mellomnavn": "Indreland"
+                }
+              },
+              "rekkefolge": 5,
+              "type": {
+                "_links": {
+                  "self": {
+                    "href": "https://data.brreg.no/enhetsregisteret/api/roller/rolletyper/MEDL"
+                  }
+                },
+                "beskrivelse": "Styremedlem",
+                "kode": "MEDL"
+              },
+              "valgtAv": {
+                "_links": {
+                  "self": {
+                    "href": "https://data.brreg.no/enhetsregisteret/api/roller/representanter/AREP"
+                  }
+                },
+                "beskrivelse": "Representant for de ansatte",
+                "kode": "AREP"
+              }
+            },
+            {
+              "avregistrert": false,
+              "person": {
+                "erDoed": false,
+                "fodselsdato": "1962-06-19",
+                "navn": {
+                  "etternavn": "Vadheim",
+                  "fornavn": "Geir Leon"
+                }
+              },
+              "rekkefolge": 6,
+              "type": {
+                "_links": {
+                  "self": {
+                    "href": "https://data.brreg.no/enhetsregisteret/api/roller/rolletyper/MEDL"
+                  }
+                },
+                "beskrivelse": "Styremedlem",
+                "kode": "MEDL"
+              },
+              "valgtAv": {
+                "_links": {
+                  "self": {
+                    "href": "https://data.brreg.no/enhetsregisteret/api/roller/representanter/AREP"
+                  }
+                },
+                "beskrivelse": "Representant for de ansatte",
+                "kode": "AREP"
+              }
+            },
+            {
+              "avregistrert": false,
+              "person": {
+                "erDoed": false,
+                "fodselsdato": "1956-01-14",
+                "navn": {
+                  "etternavn": "Drinkwater",
+                  "fornavn": "Anne"
+                }
+              },
+              "rekkefolge": 7,
+              "type": {
+                "_links": {
+                  "self": {
+                    "href": "https://data.brreg.no/enhetsregisteret/api/roller/rolletyper/MEDL"
+                  }
+                },
+                "beskrivelse": "Styremedlem",
+                "kode": "MEDL"
+              }
+            },
+            {
+              "avregistrert": false,
+              "person": {
+                "erDoed": false,
+                "fodselsdato": "1961-08-14",
+                "navn": {
+                  "etternavn": "Karlsson",
+                  "fornavn": "Mikael Roland"
+                }
+              },
+              "rekkefolge": 8,
+              "type": {
+                "_links": {
+                  "self": {
+                    "href": "https://data.brreg.no/enhetsregisteret/api/roller/rolletyper/MEDL"
+                  }
+                },
+                "beskrivelse": "Styremedlem",
+                "kode": "MEDL"
+              }
+            },
+            {
+              "avregistrert": false,
+              "person": {
+                "erDoed": false,
+                "fodselsdato": "1973-09-17",
+                "navn": {
+                  "etternavn": "Summers",
+                  "fornavn": "Dawn"
+                }
+              },
+              "rekkefolge": 9,
+              "type": {
+                "_links": {
+                  "self": {
+                    "href": "https://data.brreg.no/enhetsregisteret/api/roller/rolletyper/MEDL"
+                  }
+                },
+                "beskrivelse": "Styremedlem",
+                "kode": "MEDL"
+              }
+            },
+            {
+              "avregistrert": false,
+              "person": {
+                "erDoed": false,
+                "fodselsdato": "1966-12-23",
+                "navn": {
+                  "etternavn": "Haldorsen",
+                  "fornavn": "Hans Einar"
+                }
+              },
+              "rekkefolge": 10,
+              "type": {
+                "_links": {
+                  "self": {
+                    "href": "https://data.brreg.no/enhetsregisteret/api/roller/rolletyper/VARA"
+                  }
+                },
+                "beskrivelse": "Varamedlem",
+                "kode": "VARA"
+              },
+              "valgtAv": {
+                "_links": {
+                  "self": {
+                    "href": "https://data.brreg.no/enhetsregisteret/api/roller/representanter/AREP"
+                  }
+                },
+                "beskrivelse": "Representant for de ansatte",
+                "kode": "AREP"
+              }
+            },
+            {
+              "avregistrert": false,
+              "person": {
+                "erDoed": false,
+                "fodselsdato": "1978-03-06",
+                "navn": {
+                  "etternavn": "Heggholmen",
+                  "fornavn": "Anette"
+                }
+              },
+              "rekkefolge": 11,
+              "type": {
+                "_links": {
+                  "self": {
+                    "href": "https://data.brreg.no/enhetsregisteret/api/roller/rolletyper/VARA"
+                  }
+                },
+                "beskrivelse": "Varamedlem",
+                "kode": "VARA"
+              },
+              "valgtAv": {
+                "_links": {
+                  "self": {
+                    "href": "https://data.brreg.no/enhetsregisteret/api/roller/representanter/AREP"
+                  }
+                },
+                "beskrivelse": "Representant for de ansatte",
+                "kode": "AREP"
+              }
+            },
+            {
+              "avregistrert": false,
+              "person": {
+                "erDoed": false,
+                "fodselsdato": "1968-09-10",
+                "navn": {
+                  "etternavn": "Hansen",
+                  "fornavn": "Terje Werner"
+                }
+              },
+              "rekkefolge": 12,
+              "type": {
+                "_links": {
+                  "self": {
+                    "href": "https://data.brreg.no/enhetsregisteret/api/roller/rolletyper/VARA"
+                  }
+                },
+                "beskrivelse": "Varamedlem",
+                "kode": "VARA"
+              },
+              "valgtAv": {
+                "_links": {
+                  "self": {
+                    "href": "https://data.brreg.no/enhetsregisteret/api/roller/representanter/AREP"
+                  }
+                },
+                "beskrivelse": "Representant for de ansatte",
+                "kode": "AREP"
+              }
+            }
+          ],
+          "sistEndret": "2026-09-04",
+          "type": {
+            "_links": {
+              "self": {
+                "href": "https://data.brreg.no/enhetsregisteret/api/roller/rollegruppetyper/STYR"
+              }
+            },
+            "beskrivelse": "Styre",
+            "kode": "STYR"
+          }
+        },
+        {
+          "roller": [
+            {
+              "avregistrert": false,
+              "enhet": {
+                "_links": {
+                  "self": {
+                    "href": "https://data.brreg.no/enhetsregisteret/api/enheter/976389387"
+                  }
+                },
+                "erSlettet": false,
+                "godkjenningsstatus": "Godkjent revisjonsforetak",
+                "navn": [
+                  "ERNST & YOUNG AS"
+                ],
+                "organisasjonsform": {
+                  "_links": {
+                    "self": {
+                      "href": "https://data.brreg.no/enhetsregisteret/api/organisasjonsformer/AS"
+                    }
+                  },
+                  "beskrivelse": "Aksjeselskap",
+                  "kode": "AS"
+                },
+                "organisasjonsnummer": "976389387"
+              },
+              "rekkefolge": 0,
+              "type": {
+                "_links": {
+                  "self": {
+                    "href": "https://data.brreg.no/enhetsregisteret/api/roller/rolletyper/REVI"
+                  }
+                },
+                "beskrivelse": "Revisor",
+                "kode": "REVI"
+              }
+            }
+          ],
+          "sistEndret": "2019-07-12",
+          "type": {
+            "_links": {
+              "self": {
+                "href": "https://data.brreg.no/enhetsregisteret/api/roller/rollegruppetyper/REVI"
+              }
+            },
+            "beskrivelse": "Revisor",
+            "kode": "REVI"
+          }
+        }
+      ]
+    },
+    "financials": [
+      {
+        "id": 5027445,
+        "journalnr": "2024515327",
+        "regnskapstype": "KONSERN",
+        "virksomhet": {
+          "organisasjonsnummer": "923609016",
+          "organisasjonsform": "ASA",
+          "morselskap": true
+        },
+        "regnskapsperiode": {
+          "fraDato": "2023-01-01",
+          "tilDato": "2023-12-31"
+        },
+        "valuta": "USD",
+        "avviklingsregnskap": false,
+        "oppstillingsplan": "store",
+        "revisjon": {
+          "ikkeRevidertAarsregnskap": false,
+          "fravalgRevisjon": false
+        },
+        "regnkapsprinsipper": {
+          "smaaForetak": false,
+          "regnskapsregler": "IFRS"
+        },
+        "egenkapitalGjeld": {
+          "sumEgenkapitalGjeld": 143580000000.0,
+          "egenkapital": {
+            "sumEgenkapital": 48500000000.0,
+            "opptjentEgenkapital": {},
+            "innskuttEgenkapital": {
+              "sumInnskuttEgenkaptial": 48490000000.0
+            }
+          },
+          "gjeldOversikt": {
+            "sumGjeld": 95080000000.0,
+            "kortsiktigGjeld": {
+              "sumKortsiktigGjeld": 36190000000.0
+            },
+            "langsiktigGjeld": {
+              "sumLangsiktigGjeld": 58890000000.0
+            }
+          }
+        },
+        "eiendeler": {
+          "sumVarer": 3814000000.0,
+          "sumFordringer": 16933000000.0,
+          "sumInvesteringer": 30602000000.0,
+          "sumBankinnskuddOgKontanter": 10706000000.0,
+          "sumEiendeler": 143580000000.0,
+          "omloepsmidler": {
+            "sumOmloepsmidler": 62055000000.0
+          },
+          "anleggsmidler": {
+            "sumAnleggsmidler": 81525000000.0
+          }
+        },
+        "resultatregnskapResultat": {
+          "ordinaertResultatFoerSkattekostnad": 37884000000.0,
+          "ordinaertResultatSkattekostnad": 25980000000.0,
+          "aarsresultat": 11904000000.0,
+          "finansresultat": {
+            "nettoFinans": 2114000000.0,
+            "finansinntekt": {
+              "sumFinansinntekter": 3774000000.0
+            },
+            "finanskostnad": {
+              "sumFinanskostnad": 1660000000.0
+            }
+          },
+          "driftsresultat": {
+            "driftsresultat": 35770000000.0,
+            "driftsinntekter": {
+              "salgsinntekter": 106848000000.0,
+              "sumDriftsinntekter": 107174000000.0
+            },
+            "driftskostnad": {
+              "sumDriftskostnad": 71404000000.0
+            }
+          }
+        }
+      },
+      {
+        "id": 5667199,
+        "journalnr": "2025428073",
+        "regnskapstype": "KONSERN",
+        "virksomhet": {
+          "organisasjonsnummer": "923609016",
+          "organisasjonsform": "ASA",
+          "morselskap": true
+        },
+        "regnskapsperiode": {
+          "fraDato": "2024-01-01",
+          "tilDato": "2024-12-31"
+        },
+        "valuta": "USD",
+        "avviklingsregnskap": false,
+        "oppstillingsplan": "store",
+        "revisjon": {
+          "ikkeRevidertAarsregnskap": false,
+          "fravalgRevisjon": false
+        },
+        "regnkapsprinsipper": {
+          "smaaForetak": false,
+          "regnskapsregler": "IFRS"
+        },
+        "egenkapitalGjeld": {
+          "sumEgenkapitalGjeld": 131141000000.0,
+          "egenkapital": {
+            "sumEgenkapital": 42380000000.0,
+            "opptjentEgenkapital": {
+              "sumOpptjentEgenkapital": 38000000.0
+            },
+            "innskuttEgenkapital": {
+              "sumInnskuttEgenkaptial": 42342000000.0
+            }
+          },
+          "gjeldOversikt": {
+            "sumGjeld": 88761000000.0,
+            "kortsiktigGjeld": {
+              "sumKortsiktigGjeld": 36046000000.0
+            },
+            "langsiktigGjeld": {
+              "sumLangsiktigGjeld": 52715000000.0
+            }
+          }
+        },
+        "eiendeler": {
+          "sumVarer": 4031000000.0,
+          "sumFordringer": 17457000000.0,
+          "sumInvesteringer": 16359000000.0,
+          "sumBankinnskuddOgKontanter": 15348000000.0,
+          "sumEiendeler": 131141000000.0,
+          "omloepsmidler": {
+            "sumOmloepsmidler": 53195000000.0
+          },
+          "anleggsmidler": {
+            "sumAnleggsmidler": 77946000000.0
+          }
+        },
+        "resultatregnskapResultat": {
+          "ordinaertResultatFoerSkattekostnad": 30986000000.0,
+          "ordinaertResultatSkattekostnad": 22157000000.0,
+          "aarsresultat": 8829000000.0,
+          "finansresultat": {
+            "nettoFinans": 58000000.0,
+            "finansinntekt": {
+              "sumFinansinntekter": 1640000000.0
+            },
+            "finanskostnad": {
+              "sumFinanskostnad": 1582000000.0
+            }
+          },
+          "driftsresultat": {
+            "driftsresultat": 30928000000.0,
+            "driftsinntekter": {
+              "salgsinntekter": 102502000000.0,
+              "sumDriftsinntekter": 103774000000.0
+            },
+            "driftskostnad": {
+              "sumDriftskostnad": 72846000000.0
+            }
+          }
+        }
+      },
+      {
+        "id": 7192429,
+        "journalnr": "2026635024",
+        "regnskapstype": "KONSERN",
+        "virksomhet": {
+          "organisasjonsnummer": "923609016",
+          "organisasjonsform": "ASA",
+          "morselskap": true
+        },
+        "regnskapsperiode": {
+          "fraDato": "2025-01-01",
+          "tilDato": "2025-12-31"
+        },
+        "valuta": "USD",
+        "avviklingsregnskap": false,
+        "oppstillingsplan": "store",
+        "revisjon": {
+          "ikkeRevidertAarsregnskap": false,
+          "fravalgRevisjon": false
+        },
+        "regnkapsprinsipper": {
+          "smaaForetak": false,
+          "regnskapsregler": "IFRS"
+        },
+        "egenkapitalGjeld": {
+          "sumEgenkapitalGjeld": 131727000000.0,
+          "egenkapital": {
+            "sumEgenkapital": 40497000000.0,
+            "opptjentEgenkapital": {
+              "sumOpptjentEgenkapital": 73000000.0
+            },
+            "innskuttEgenkapital": {
+              "sumInnskuttEgenkaptial": 40424000000.0
+            }
+          },
+          "gjeldOversikt": {
+            "sumGjeld": 91230000000.0,
+            "kortsiktigGjeld": {
+              "sumKortsiktigGjeld": 30780000000.0
+            },
+            "langsiktigGjeld": {
+              "sumLangsiktigGjeld": 60450000000.0
+            }
+          }
+        },
+        "eiendeler": {
+          "sumVarer": 3330000000.0,
+          "sumFordringer": 14704000000.0,
+          "sumInvesteringer": 14964000000.0,
+          "sumBankinnskuddOgKontanter": 5942000000.0,
+          "sumEiendeler": 131727000000.0,
+          "omloepsmidler": {
+            "sumOmloepsmidler": 38940000000.0
+          },
+          "anleggsmidler": {
+            "sumAnleggsmidler": 92787000000.0
+          }
+        },
+        "resultatregnskapResultat": {
+          "ordinaertResultatFoerSkattekostnad": 25088000000.0,
+          "ordinaertResultatSkattekostnad": 20030000000.0,
+          "aarsresultat": 5058000000.0,
+          "finansresultat": {
+            "nettoFinans": -265000000.0,
+            "finansinntekt": {
+              "sumFinansinntekter": 1175000000.0
+            },
+            "finanskostnad": {
+              "sumFinanskostnad": 1440000000.0
+            }
+          },
+          "driftsresultat": {
+            "driftsresultat": 25353000000.0,
+            "driftsinntekter": {
+              "salgsinntekter": 105828000000.0,
+              "sumDriftsinntekter": 106462000000.0
+            },
+            "driftskostnad": {
+              "sumDriftskostnad": 81109000000.0
+            }
+          }
+        }
+      },
+      {
+        "id": 5027443,
+        "journalnr": "2024515327",
+        "regnskapstype": "SELSKAP",
+        "virksomhet": {
+          "organisasjonsnummer": "923609016",
+          "organisasjonsform": "ASA",
+          "morselskap": true
+        },
+        "regnskapsperiode": {
+          "fraDato": "2023-01-01",
+          "tilDato": "2023-12-31"
+        },
+        "valuta": "USD",
+        "avviklingsregnskap": false,
+        "oppstillingsplan": "store",
+        "revisjon": {
+          "ikkeRevidertAarsregnskap": false,
+          "fravalgRevisjon": false
+        },
+        "regnkapsprinsipper": {
+          "smaaForetak": false,
+          "regnskapsregler": "IFRS"
+        },
+        "egenkapitalGjeld": {
+          "sumEgenkapitalGjeld": 127220000000.0,
+          "egenkapital": {
+            "sumEgenkapital": 46173000000.0,
+            "opptjentEgenkapital": {
+              "sumOpptjentEgenkapital": 45072000000.0
+            },
+            "innskuttEgenkapital": {
+              "sumInnskuttEgenkaptial": 1101000000.0
+            }
+          },
+          "gjeldOversikt": {
+            "sumGjeld": 81047000000.0,
+            "kortsiktigGjeld": {
+              "sumKortsiktigGjeld": 51318000000.0
+            },
+            "langsiktigGjeld": {
+              "sumLangsiktigGjeld": 29729000000.0
+            }
+          }
+        },
+        "eiendeler": {
+          "sumVarer": 1580000000.0,
+          "sumFordringer": 21148000000.0,
+          "sumBankinnskuddOgKontanter": 35317000000.0,
+          "sumEiendeler": 127220000000.0,
+          "omloepsmidler": {
+            "sumOmloepsmidler": 58045000000.0
+          },
+          "anleggsmidler": {
+            "sumAnleggsmidler": 69175000000.0
+          }
+        },
+        "resultatregnskapResultat": {
+          "ordinaertResultatFoerSkattekostnad": 12299000000.0,
+          "ordinaertResultatSkattekostnad": 618000000.0,
+          "aarsresultat": 11681000000.0,
+          "finansresultat": {
+            "nettoFinans": 1641000000.0,
+            "finansinntekt": {
+              "sumFinansinntekter": 4726000000.0
+            },
+            "finanskostnad": {
+              "sumFinanskostnad": 3085000000.0
+            }
+          },
+          "driftsresultat": {
+            "driftsresultat": 10658000000.0,
+            "driftsinntekter": {
+              "salgsinntekter": 62286000000.0,
+              "sumDriftsinntekter": 72442000000.0
+            },
+            "driftskostnad": {
+              "sumDriftskostnad": 61784000000.0
+            }
+          }
+        }
+      },
+      {
+        "id": 5667197,
+        "journalnr": "2025428073",
+        "regnskapstype": "SELSKAP",
+        "virksomhet": {
+          "organisasjonsnummer": "923609016",
+          "organisasjonsform": "ASA",
+          "morselskap": true
+        },
+        "regnskapsperiode": {
+          "fraDato": "2024-01-01",
+          "tilDato": "2024-12-31"
+        },
+        "valuta": "USD",
+        "avviklingsregnskap": false,
+        "oppstillingsplan": "store",
+        "revisjon": {
+          "ikkeRevidertAarsregnskap": false,
+          "fravalgRevisjon": false
+        },
+        "regnkapsprinsipper": {
+          "smaaForetak": false,
+          "regnskapsregler": "forenkletAnvendelseIFRS"
+        },
+        "egenkapitalGjeld": {
+          "sumEgenkapitalGjeld": 109150000000.0,
+          "egenkapital": {
+            "sumEgenkapital": 41090000000.0,
+            "opptjentEgenkapital": {
+              "sumOpptjentEgenkapital": 40038000000.0
+            },
+            "innskuttEgenkapital": {
+              "sumInnskuttEgenkaptial": 1052000000.0
+            }
+          },
+          "gjeldOversikt": {
+            "sumGjeld": 68060000000.0,
+            "kortsiktigGjeld": {
+              "sumKortsiktigGjeld": 42024000000.0
+            },
+            "langsiktigGjeld": {
+              "sumLangsiktigGjeld": 26036000000.0
+            }
+          }
+        },
+        "eiendeler": {
+          "sumVarer": 1926000000.0,
+          "sumFordringer": 24470000000.0,
+          "sumBankinnskuddOgKontanter": 18683000000.0,
+          "sumEiendeler": 109150000000.0,
+          "omloepsmidler": {
+            "sumOmloepsmidler": 45079000000.0
+          },
+          "anleggsmidler": {
+            "sumAnleggsmidler": 64071000000.0
+          }
+        },
+        "resultatregnskapResultat": {
+          "ordinaertResultatFoerSkattekostnad": 8168000000.0,
+          "ordinaertResultatSkattekostnad": 27000000.0,
+          "aarsresultat": 8141000000.0,
+          "finansresultat": {
+            "nettoFinans": -2179000000.0,
+            "finansinntekt": {
+              "sumFinansinntekter": 516000000.0
+            },
+            "finanskostnad": {
+              "sumFinanskostnad": 2695000000.0
+            }
+          },
+          "driftsresultat": {
+            "driftsresultat": 10347000000.0,
+            "driftsinntekter": {
+              "salgsinntekter": 62615000000.0,
+              "sumDriftsinntekter": 72543000000.0
+            },
+            "driftskostnad": {
+              "sumDriftskostnad": 62196000000.0
+            }
+          }
+        }
+      },
+      {
+        "id": 7192427,
+        "journalnr": "2026635024",
+        "regnskapstype": "SELSKAP",
+        "virksomhet": {
+          "organisasjonsnummer": "923609016",
+          "organisasjonsform": "ASA",
+          "morselskap": true
+        },
+        "regnskapsperiode": {
+          "fraDato": "2025-01-01",
+          "tilDato": "2025-12-31"
+        },
+        "valuta": "USD",
+        "avviklingsregnskap": false,
+        "oppstillingsplan": "store",
+        "revisjon": {
+          "ikkeRevidertAarsregnskap": false,
+          "fravalgRevisjon": false
+        },
+        "regnkapsprinsipper": {
+          "smaaForetak": false,
+          "regnskapsregler": "forenkletAnvendelseIFRS"
+        },
+        "egenkapitalGjeld": {
+          "sumEgenkapitalGjeld": 103431000000.0,
+          "egenkapital": {
+            "sumEgenkapital": 39182000000.0,
+            "opptjentEgenkapital": {
+              "sumOpptjentEgenkapital": 38187000000.0
+            },
+            "innskuttEgenkapital": {
+              "sumInnskuttEgenkaptial": 995000000.0
+            }
+          },
+          "gjeldOversikt": {
+            "sumGjeld": 64249000000.0,
+            "kortsiktigGjeld": {
+              "sumKortsiktigGjeld": 36924000000.0
+            },
+            "langsiktigGjeld": {
+              "sumLangsiktigGjeld": 27325000000.0
+            }
+          }
+        },
+        "eiendeler": {
+          "sumVarer": 1350000000.0,
+          "sumFordringer": 13525000000.0,
+          "sumBankinnskuddOgKontanter": 17651000000.0,
+          "sumEiendeler": 103432000000.0,
+          "omloepsmidler": {
+            "sumOmloepsmidler": 32526000000.0
+          },
+          "anleggsmidler": {
+            "sumAnleggsmidler": 70906000000.0
+          }
+        },
+        "resultatregnskapResultat": {
+          "ordinaertResultatFoerSkattekostnad": 6124000000.0,
+          "ordinaertResultatSkattekostnad": 393000000.0,
+          "aarsresultat": 5731000000.0,
+          "finansresultat": {
+            "nettoFinans": 561000000.0,
+            "finansinntekt": {
+              "sumFinansinntekter": 2820000000.0
+            },
+            "finanskostnad": {
+              "sumFinanskostnad": 2259000000.0
+            }
+          },
+          "driftsresultat": {
+            "driftsresultat": 5563000000.0,
+            "driftsinntekter": {
+              "salgsinntekter": 61999000000.0,
+              "sumDriftsinntekter": 67956000000.0
+            },
+            "driftskostnad": {
+              "sumDriftskostnad": 62393000000.0
+            }
+          }
+        }
+      }
+    ]
+  },
+  "search": [
+    {
+      "title": "Equinor ASA - Factpages - Norwegian Offshore Directorate",
+      "url": "https://factpages.sodir.no/company/pageview/all/32017311",
+      "snippet": "Equinor ASA Organisation number Official Norwegian organisation number. 923609016 Nation code 2 letter nation code (ISO) for the nation the company is ..."
+    },
+    {
+      "title": "Equinor Asa - Org.nr. 923 609 016 - Stavanger",
+      "url": "https://www.proff.no/selskap/equinor-asa/stavanger/olje-og-gass/IF9W5A00VFQ",
+      "snippet": "Å utvikle, produsere og markedsføre ulike former for energi, avledede produkter og tjenester , samt annen virksomhet. Virksomheten kan også drives gjennom ... Read more"
+    },
+    {
+      "title": "EQUINOR ASA (923609016) - Stavanger",
+      "url": "https://utdanning.no/bedrift/923609016/",
+      "snippet": "ASA (923609016 ). ansatte: 21272 CEO. ASA Besøksadresse Postboks 8500 4035 Stavanger Postadresse Postboks 8500 4035 STAVANGER Telefonnummer 51 99 00 00"
+    },
+    {
+      "title": "Equinor ASA, Stavanger, Norway",
+      "url": "https://www.northdata.com/Equinor%20ASA,%20Stavanger/BR%20923609016",
+      "snippet": "Equinor ASA, Stavanger, Norway , The Brønnøysund Register Centre 923609016: Network, Financial information. Address Forusbeen 50, 4035 Stavanger, Norway. First ..."
+    },
+    {
+      "title": "equinor asa",
+      "url": "https://virksomhet.brreg.no/en/oppslag/enheter/923609016",
+      "snippet": "EQUINOR ASA Organisation number 923 609 016 Business address Forusbeen 50 4035 STAVANGER Municipality, country. You will find transfers of aquaculture licences"
+    },
+    {
+      "title": "Equinor: Providing reliable energy for a world in transition ...",
+      "url": "https://www.equinor.com/",
+      "snippet": "We are an international energy company headquartered in Norway , around 25000 employees and with offices in more than 20 countries worldwide."
+    },
+    {
+      "title": "Equinor Asa",
+      "url": "https://kredittsjekk.no/bedrift/923609016-equinor-asa",
+      "snippet": "Equinor Asa (923 609 016) i Stavanger driver innen utvinning av råolje . Se kredittvurdering, regnskap, roller og eiere."
+    },
+    {
+      "title": "EQUINOR ASA - 923609016 - Company Info",
+      "url": "https://yra.no/en/company/923609016",
+      "snippet": "EQUINOR ASA is a Norwegian public limited company within the industy of extraction of crude petroleum. has 21528 employees.EQUINOR … total assets of $109,150, ..."
+    }
+  ],
+  "search_url": "https://api.search.tinyfish.ai/?query=EQUINOR+ASA+923609016&location=NO&language=no",
+  "pages": {
+    "https://factpages.sodir.no/company/pageview/all/32017311": {
+      "kind": "page",
+      "status": 200,
+      "title": "Company: Equinor ASA - Factpages - Norwegian Offshore Directorate",
+      "text": "Company: Equinor ASA - Factpages - Norwegian Offshore Directorate\n\nTil hovedinnhold\n\nMenu\n\nsodir.no\nFeedback\n\nNorsk\n\nsodir.no\nFeedback\n\nNorsk\n\nGive whole or part of name of wellbore, licence, field, company, discovery etc. E.g. Aker, Statfjord, 24/12, ABP21014. The main content is not searched.\n\nWellbore\n\nCO2 Storage\n\nLicence\n\nBAA\n\nField\n\nDiscovery\n\nCompany\n\nSurvey\n\nFacility\n\nTUF\n\nStratigraphy\n\n15.10.2026 - 01:41\n\nTime of last synchronization with Norwegian Offshore Directorate's internal systems\n\nWellbore\n\nCO2 Storage\n\nLicence\n\nBAA\n\nField\n\nDiscovery\n\nCompany\nAttributes\n\nPage view\n\nOperators\n\nLicensees\n\nAll\n\n4Sea Energy AS\n\nA/S Norske Shell\n\nABL Group Norway AS\n\nABP Norway AS\n\nAbyss Group AS\n\nACECA Limited\n\nAcergy M.S. Limited\n\nAcorn Oil & Gas Limited\n\nAcre Oil Ltd\n\nAdura Operations Limited\n\nAgencia Estatal Consejo Superior de Investigaciones Cientificas\n\nAgora Oil & Gas AS\n\nAGR Energy Services AS\n\nAGR Petroleum Services AS\n\nAGR Software AS\n\nAker BP AS\n\nAker BP ASA\n\nAker Drilling ASA\n\nAker Energy AS\n\nAker Exploration AS\n\nAker Exploration ASA\n\nAker Geo ASA\n\nAker Geo Seismic AS\n\nAker Maritime ASA\n\nAkofs Offshore Operations AS\n\nAkvaplan-nivå AS\n\nAlcatel Submarine Networks Marine\n\nAlfred Wegener Institut fur Polar und Meeresforschung\n\nAlfred Wegener Institut fur Polar- und Meeresforschung\n\nAltera Infrastructure Production AS\n\nAltinex AS\n\nAltinex Oil AS\n\nAltinex Oil Norway AS\n\nAmarok A.S\n\nAmax Petroleum Norge A/S\n\nAmerada Hess Norge AS\n\nAmoco Norway AS\n\nAmoco Norway Oil Company\n\nAmoseas\n\nApplied Petroleum Technology AS\n\nAquitaine Norge A/S\n\nAquitaine UK\n\nAran Energy Exploration Ltd\n\nArcade Drilling A/S\n\nArcher Oiltools AS\n\nArco Norge A/S\n\nArethusa (Off-Shore) Ltd.\n\nARKeX Limited\n\nArtic Morneste Gas Ras Vedka\n\nAS Amundsen Diving\n\nAS Brøvigtank\n\nAS Geoconsult\n\nAS Uglands Rederi\n\nAtlantic Petroleum Norge AS\n\nAuxirap Norge A/S\n\nAwilco AS\n\nAxxis Geo Solutions AS\n\nBaker Hughes Norge AS\n\nBaltic AS\n\nBaltic Sea Research Institute\n\nBaltic Shipping Services Ltd\n\nBayerngas Norge AS\n\nBayerngas Produksjon Norge AS\n\nBeagle Consultants Limited\n\nBedford Interactive Processing Services Ltd\n\nBergen Oilfield Services AS\n\nBergen Rørteknikk AS\n\nBergen Tilkomst Teknikk AS\n\nBG Energy Holdings Limited\n\nBG International Limited\n\nBG Norge AS\n\nBG Norge Limited\n\nBilfinger Nordics AS\n\nBlandfor Shipping Co. LTD\n\nBluware AS\n\nBow Valley Exploration Norge A/S\n\nBow Valley Petroleum (UK) Limited\n\nBP Amoco Norge AS\n\nBP Exploration Ltd.\n\nBP Exploration Operating Company Limited\n\nBP Gas Marketing Limited\n\nBP Norge AS\n\nBP Norway Limited U.A.\n\nBP Petroleum Dev. of Norway AS\n\nBP Petroleum Development Ltd\n\nBransjeforeningen Norsk Olje og Gass\n\nBransjeforeningen Offshore Norge\n\nBridge Energy AS\n\nBridge Energy Norge AS\n\nBridge Petroleum 3 Limited\n\nBridge Petroleum Limited\n\nBritish Antarctic Survey\n\nBritish Gas\n\nBritish Institutes Reflection Profiling Syndicate\n\nBritish National Oil Corporation\n\nBritoil\n\nBritoil Limited\n\nBritoil Norge A/S\n\nBritol Public Limited Company\n\nBruker Daltonik GmbH\n\nBrøvig Shipping AS\n\nBundesamt fur Seeschiffahrt und Hydrographie\n\nBundesanstalt fur Geowissenshaften und Rohstoffe\n\nBundesanstalt fur Landwirthschaft un Ernahrung\n\nCalecore Limited\n\nCalifornia Asiatic Oil co of Norway\n\nCameron Norge AS\n\nCanadian Coast Guard\n\nCanamens Energy AS\n\nCanyon Offshore Limited\n\nCap Gemini Ernst & Young\n\nCapeOmega AS\n\nCapeOmega AS (old)\n\nCapeOmega Carbon Storage AS\n\nCapeOmega Hjelpeselskap AS\n\nCapeOmega II AS\n\nCapricorn Norge AS\n\nCegal AS\n\nCentre for Environment Fisheries and Aquaculture Science\n\nCentre National Pour L'Exploration Des Oceans\n\nCentrica Energi\n\nCentrica Resources (Norge) AS\n\nCentrica Resources Limited\n\nCEPM\n\nCGG Marine (Norway) AS\n\nCGG Norge A/S\n\nCGG Services (Norway) AS\n\nCGG Services (Norway) AS (OLD)\n\nCGG Veritas Services (UK) Limited\n\nCGG Veritas Services SA\n\nCGGVeritas Seabed AS\n\nCGGVeritas Services (Norway) AS\n\nChemostrat Ltd\n\nChevron Denmark, Filial af Chevron Denmark Inc., USA\n\nChevron Norge AS\n\nChevron North Sea Limited\n\nChevron Petroleum Company of Norway\n\nChevron Products UK Limited\n\nChevron Texaco Norge AS\n\nChevron Texaco UK Ltd.\n\nChevron UK Ltd.\n\nChina Offshore Oil Southern Drilling Company\n\nChiron AS\n\nChristian-Albrechts University of Kiel\n\nChrysaor CNS Limited\n\nChrysaor Limited\n\nChrysaor Norge AS\n\nChrysaor North Sea Limited\n\nChrysaor Petroleum Company U.K. Limited\n\nChulalongkorn University\n\nClementine Moulin\n\nCNR International (Norway) AS\n\nCNR International (UK) Limited\n\nCoe Metcalf Shipping LTD.\n\nCofranord A/S\n\nComando in capo della squadra navale\n\nConcedo AS\n\nConcedo ASA\n\nConoco (UK) Ltd\n\nConoco North Sea Inc.\n\nConoco Norway Inc.\n\nConoco Petroleum Norge AS\n\nConocoPhillips (U.K) Holdings Limited\n\nConocoPhillips (U.K.) Limited.\n\nConocoPhillips (U.K.) Marketing and Trading Limited\n\nConocoPhillips (U.K.) Theta Limited\n\nConocoPhillips Norge\n\nConocoPhillips Skandinavia AS\n\nConsto Anlegg Nord AS\n\nContinantal Geophysical\n\nCoparex Norge A/S\n\nCore Energy AS\n\nCOSL Drilling Europe AS\n\nCOSL Offshore Management As\n\nCrane Norway Vest AS\n\nDalmoneftegeofizika\n\nDana Petroleum (BVUK) Limited\n\nDana Petroleum (E & P) Limited\n\nDana Petroleum Norway AS\n\nDana Petroleum Norway ASA\n\nDe Nationale Geologiske Undersøgelser for Danmark og Grønland\n\nDea E&P Norge AS\n\nDEA Norge AS\n\nDeepOcean AS\n\nDeminex Nord A/S\n\nDeminex Norge AS\n\nDen norske stats oljeselskap a.s\n\nDet norske Exploration AS\n\nDet norske Oil AS\n\nDet Norske Oljeselskap AS\n\nDet norske oljeselskap AS\n\nDet norske oljeselskap AS(old)\n\nDet norske oljeselskap ASA\n\nDet norske oljeselskap ASA (old)\n\nDet Norske Oljeselskap ASA (old)\n\nDet Norske Veritas\n\nDet russiske meteorologiske Instituttet i Arkhangelsk\n\nDeutsches GeoForschungsZentrum GFZ\n\nDiamond Offshore Drilling LTD.\n\nDigicon Geophysical LTD\n\nDigital Exploration Limited\n\nDina Offshore AS\n\nDINOSYSTEMS\n\nDiscover Petroleum AS\n\nDNO Norge AS\n\nDNO Norge AS (old)\n\nDNO North Sea (Norge) AS\n\nDNO North Sea (ROGB) Limited\n\nDNO North Sea (UK) Limited\n\nDNO Olje A/S\n\nDOF Management AS\n\nDOF Subsea Norway AS\n\nDolphin AS\n\nDolphin Drilling AS\n\nDolphin Geophysical AS\n\nDolphin Geophysical Limited\n\nDONG E&P Norge AS\n\nDONG Etterforskning og Produktion AS\n\nDONG Naturgas A/S\n\nDONG Norge AS\n\nDONG Norge AS(old)\n\nDOPAS Norge AS\n\nDSND Shipping AS\n\nDTU Aqua\n\nDurham University\n\nDyas Norge AS\n\nDyas UK Limited\n\nE&P Holding AS\n\nE.ON E&P Norge AS\n\nE.ON E&P UK\n\nE.ON Ruhrgas Norge AS\n\nEarth Science Analytics AS\n\nEcole Normale Superieure de Lyon\n\nECTERAS AS\n\nEdison International Norway Branch\n\nEdison International Spa\n\nEdison Norge AS\n\nEDT Offshore\n\nEidesvik Shipping AS\n\nEindhoven University of Technology\n\nElectromagnetic Geoservices ASA\n\nElf Aquitaine Norge A/S\n\nElf Exploration UK Ltd\n\nElf Norge A/S\n\nELF Oil UK\n\nElf Petroleum Norge AS\n\nElf Rep Norge A/S\n\nElf Rex Norge AS\n\nEmergy Exploration AS\n\nEMGS Global AS\n\nEndeavour Energy (UK) Limited\n\nEndeavour Energy Norge AS\n\nEndeavour Energy Norge AS (OLD)\n\nEndeavour International Corporation\n\nEndeavour Norge AS\n\nEner Petroleum ASA\n\nEnergidepartementet\n\nEnergy Equipment Resource Inc\n\nEnerMech AS\n\nENGIE E&P Norge AS\n\nEngie SA\n\nEni Elgin/Franklin Limited\n\nEni Energy E&P UK Limited\n\nEni Norge AS\n\nEni Norge AS (old)\n\nEni UK Limited\n\nEni ULX Limited\n\nEnQuest Norge AS\n\nEnsign Geophysics LTD\n\nEnterprise Oil Ltd\n\nEnterprise Oil Norge AS\n\nEnterprise Oil Norwegian AS\n\nEnviros survey & consultancy ltd\n\nEnvision AS\n\nEnvision AS (old)\n\nEquinor ASA\n\nEquinor Energy AS\n\nEquinor Energy Trading Limited\n\nEquinor Low Carbon Solution AS\n\nEquinor Refining Norway AS\n\nEquinor UK Limited\n\nEsso Exploration and Production Norway A/S\n\nEsso Exploration and Production UK Limited\n\nESSO MOBIL\n\nEstimages Norge AS\n\nET Geo AS\n\nEurafrep Norge A/S\n\nExcel Expro Norge AS\n\nExploCrowd AS\n\nExplora Petroleum AS\n\nExploration Consultants Ltd.\n\nExploration Geosciences (UK) Limited\n\nExploro AS\n\nExxon Mobil Corporation\n\nExxonMobil CNNS Limited\n\nExxonMobil Exploration and Production Norway AS\n\nExxonMobil Production Norway Inc.\n\nEykon Energy AS\n\nFairfield Nodal\n\nFaroe Petroleum (ROGB) Limited\n\nFaroe Petroleum (UK) Limited\n\nFaroe Petroleum Norge AS\n\nFaroe Petroleum plc\n\nFarstad Shipping ASA\n\nFederal Maritime and Hydrographic Agency\n\nFederal State Budgetary Scientific institution Russian Research of fisheries and oceanography\n\nFina Exploration Norway SCA\n\nFina Production Licenses AS\n\nFirst Geo AS\n\nFirst Oil Expro Limited\n\nFiskeridirektoratet\n\nFloatel International AB\n\nFluid Inclusion Technologies Inc\n\nFluxys SA\n\nFondation Tara Ocean\n\nForskningsparken\n\nForsvarets Forskningsinstitutt\n\nFortis Petroleum Norway AS\n\nFortum Petroleum AS\n\nFranklin Petroleum Limited\n\nFraunhofer IEG\n\nFrench hydrographic office - SHOM\n\nFront Exploration AS\n\nFSBSI\n\nFugro GB Marine Limited\n\nFugro GB(North) Marine Limited Survey House\n\nFugro Geolab Nor AS\n\nFugro Geotechnics AS\n\nFugro Multi Client Services AS\n\nFugro Norway AS\n\nFugro Survey AS\n\nFugro-Geoteam AS\n\nGardline Geosurvey Ltd\n\nGardline Limited\n\nGassco AS\n\nGassnova SF\n\nGaz de France Norge AS\n\nGaz De France S.A.\n\nGC Rieber Shipping AS\n\nGDF SUEZ E&P Norge AS\n\nGeco Exploration\n\nGeco- Prakla\n\nGeco-Prakla\n\nGenesis Petroleum Norway AS\n\nGeo\n\nGeo Copenhagen\n\nGeoactive Limited\n\nGeodata AS\n\nGeodata Trade Operator Norsk Olje & Gass\n\nGeoForschungsZentrum Potsdam\n\nGeologica AS\n\nGeological Institute\n\nGeological survey of Canada\n\nGeological Survey of Denmark and Greenland\n\nGeomar\n\nGeophysical Company of Norway A/S\n\nGeophysical Services\n\nGeoPlayGround AS\n\nGeoProvider AS\n\nGeoprovider Seismic AS\n\nGeoquip Marine\n\nGeosciences Barcelona (GEO3BCN) (CSIC)\n\nGeosoft Inc.\n\nGeosource Petty-Ray Geophysical\n\nGeoteam AS\n\nGeoteam Exploration AS\n\nGeotrace Technologies Ltd\n\nGEOxyz\n\nGFZ\n\nGlobal Geo Services ASA\n\nGlobal SantaFe Corporation\n\nGoel m/v Goel Egede\n\nGolar-Nor Offshore\n\nGot Vinje Industri AS\n\nGrail North Sea Limited\n\nGreatship Global Offshore Services Pte. Ltd.\n\nGreenpeace e.V.\n\nGulf (U.K.) Offshore Investment Ltd\n\nGulf Oil Corporation\n\nGX Technology\n\nGøteborg Universitet\n\nHalliburton Geophysical Services\n\nHamilton Brothers Oil & Gas\n\nHampson-Russell Software Services Ltd\n\nHarbour Energy Norge AS\n\nHarbour Energy Norge AS (Old)\n\nHarbour Energy Petroleum Resources Limited\n\nHav Energy NCS Gas AS\n\nHavforskningsinstituttet\n\nHavila Shipping ASA\n\nHavila Sirius AS\n\nHavindustritilsynet\n\nHeerema Marine Contractors\n\nHeriot-Watt University\n\nHess Norge AS\n\nHispanoil (Norway) A/S\n\nHorisont Energi AS\n\nHorizon Exploration LTD\n\nIchron Limited\n\nIdemitsu Oil Exploration (Norsk) a.s.\n\nIdemitsu Petroleum Norge AS\n\nIdemitsu Petroleum UK LTD\n\nIFREMER\n\nIHS Energy Group\n\nIkon Science Limited\n\nIKU Petroleumsforskning SINTEF Gruppen\n\nIMC Diving AS\n\nImperial College\n\nInApril AS\n\nIndustrial Perforadora de Campeche SA de CV\n\nINEOS E&P Norge AS\n\nInfragas Norge AS\n\nInov8 Energy AS\n\nINPEX Idemitsu Norge AS\n\nINPEX Norge AS\n\nInseis AS\n\nInstitut francais de Recherche pour I'Exploration de la Mer\n\nInstitut Francais du Petrole\n\nInstitut fur Meereskunde\n\nInstitut Polaire Francais\n\nInstitute for Oceanography / University of Hamburg\n\nInstitute of Chemical Engineering and Scientist\n\nInstitute of Marine and Coastal Science\n\nInstitute of Oceanology\n\nInstitutio Nazionale di Oceanografia e di Geofisica Sperimen\n\nIntegrated Geochemical Interpretation Ltd.\n\nIntegrated Ocean Drilling Program\n\nION Geophysical\n\nIona UK\n\nIron Mountain Norge AS\n\nIsland Drilling Company AS\n\nIsland Offshore III AS\n\nIsland Offshore Management AS\n\nISOLAB Laborgerate GmbH\n\niSurvey AS\n\nItalian Navy\n\nIthaca (NE) E&P Limited\n\nIthaca EF Limited\n\nIthaca Energy (UK) Limited\n\nIthaca Energy Developments UK Limited\n\nIthaca Gamma Limited\n\nIthaca GSA Limited\n\nIthaca J E&P Limited\n\nIthaca MA Limited\n\nIthaca Minerals (North Sea) Limited\n\nIthaca Oil & Gas (U.K.) Limited\n\nIthaca Oil and Gas Limited\n\nIthaca Petroleum Norge AS\n\nIthaca SP E&P Limited\n\nITU Polar Research Center\n\nJapan National Oil Corporation\n\nJapex Norge AS\n\nJapex UK E&P Limited\n\nJSC Marine Arctic Geological Expedition\n\nJSC Sevmorneftefeofizika\n\nJX Nippon Exploration and Production (UK) Limited\n\nK/S A/S Polaris Oil Consortium\n\nK/S Farmand Survey\n\nK/S Femogtyvefire No",
+      "links": [
+        "\" + link.href + \"/\" + node.Name + \"",
+        "https://factpages.sodir.no/en",
+        "https://sodir.no/en",
+        "mailto:factweb@sodir.no?subject=https://factpages.sodir.no/en/company/pageview/all/32017311",
+        "https://factpages.sodir.no/nb-no/company/pageview/all/32017311",
+        "https://factpages.sodir.no/en/wellbore",
+        "https://factpages.sodir.no/en/storage",
+        "https://factpages.sodir.no/en/licence",
+        "https://factpages.sodir.no/en/bsns_arr_area",
+        "https://factpages.sodir.no/en/field",
+        "https://factpages.sodir.no/en/discovery",
+        "https://factpages.sodir.no/en/company",
+        "https://factpages.sodir.no/en/survey",
+        "https://factpages.sodir.no/en/facility",
+        "https://factpages.sodir.no/en/tuf",
+        "https://factpages.sodir.no/en/strat",
+        "https://factpages.sodir.no/en/company/Attributes",
+        "https://factpages.sodir.no/en/company/PageView",
+        "https://factpages.sodir.no/en/company/PageView/CurrentOperators",
+        "https://factpages.sodir.no/en/company/PageView/CurrentLicensees",
+        "https://factpages.sodir.no/en/company/PageView/All",
+        "https://factpages.sodir.no/en/company/PageView/All/4504118",
+        "https://factpages.sodir.no/en/company/PageView/All/562",
+        "https://factpages.sodir.no/en/company/PageView/All/50000143",
+        "https://factpages.sodir.no/en/company/PageView/All/50000045",
+        "https://factpages.sodir.no/en/company/PageView/All/50000068",
+        "https://factpages.sodir.no/en/company/PageView/All/2748537",
+        "https://factpages.sodir.no/en/company/PageView/All/4394060",
+        "https://factpages.sodir.no/en/company/PageView/All/2455861",
+        "https://factpages.sodir.no/en/company/PageView/All/3499776",
+        "https://factpages.sodir.no/en/company/PageView/All/50000163",
+        "https://factpages.sodir.no/en/company/PageView/All/50000165",
+        "https://factpages.sodir.no/en/company/PageView/All/18386322",
+        "https://factpages.sodir.no/en/company/PageView/All/35000024",
+        "https://factpages.sodir.no/en/company/PageView/All/35000023",
+        "https://factpages.sodir.no/en/company/PageView/All/27083993",
+        "https://factpages.sodir.no/en/company/PageView/All/30382411",
+        "https://factpages.sodir.no/en/company/PageView/All/28544099",
+        "https://factpages.sodir.no/en/company/PageView/All/5107894",
+        "https://factpages.sodir.no/en/company/PageView/All/1624465",
+        "https://factpages.sodir.no/en/company/PageView/All/4460425",
+        "https://factpages.sodir.no/en/company/PageView/All/4062981",
+        "https://factpages.sodir.no/en/company/PageView/All/1030386",
+        "https://factpages.sodir.no/en/company/PageView/All/1030397",
+        "https://factpages.sodir.no/en/company/PageView/All/1340895",
+        "https://factpages.sodir.no/en/company/PageView/All/50000019",
+        "https://factpages.sodir.no/en/company/PageView/All/29806376",
+        "https://factpages.sodir.no/en/company/PageView/All/35000017",
+        "https://factpages.sodir.no/en/company/PageView/All/2670",
+        "https://factpages.sodir.no/en/company/PageView/All/29806399",
+        "https://factpages.sodir.no/en/company/PageView/All/50000020",
+        "https://factpages.sodir.no/en/company/PageView/All/24617956",
+        "https://factpages.sodir.no/en/company/PageView/All/2835200",
+        "https://factpages.sodir.no/en/company/PageView/All/4446230",
+        "https://factpages.sodir.no/en/company/PageView/All/21333519",
+        "https://factpages.sodir.no/en/company/PageView/All/56",
+        "https://factpages.sodir.no/en/company/PageView/All/67",
+        "https://factpages.sodir.no/en/company/PageView/All/89",
+        "https://factpages.sodir.no/en/company/PageView/All/78",
+        "https://factpages.sodir.no/en/company/PageView/All/100",
+        "https://factpages.sodir.no/en/company/PageView/All/1035863",
+        "https://factpages.sodir.no/en/company/PageView/All/111",
+        "https://factpages.sodir.no/en/company/PageView/All/45674",
+        "https://factpages.sodir.no/en/company/PageView/All/3499798",
+        "https://factpages.sodir.no/en/company/PageView/All/2399869",
+        "https://factpages.sodir.no/en/company/PageView/All/50000162",
+        "https://factpages.sodir.no/en/company/PageView/All/122",
+        "https://factpages.sodir.no/en/company/PageView/All/2783026",
+        "https://factpages.sodir.no/en/company/PageView/All/23396061",
+        "https://factpages.sodir.no/en/company/PageView/All/2359225",
+        "https://factpages.sodir.no/en/company/PageView/All/50000067",
+        "https://factpages.sodir.no/en/company/PageView/All/2786190",
+        "https://factpages.sodir.no/en/company/PageView/All/1342045",
+        "https://factpages.sodir.no/en/company/PageView/All/40103",
+        "https://factpages.sodir.no/en/company/PageView/All/22513163",
+        "https://factpages.sodir.no/en/company/PageView/All/133",
+        "https://factpages.sodir.no/en/company/PageView/All/3471807",
+        "https://factpages.sodir.no/en/company/PageView/All/31143916",
+        "https://factpages.sodir.no/en/company/PageView/All/50000115",
+        "https://factpages.sodir.no/en/company/PageView/All/2786204",
+        "https://factpages.sodir.no/en/company/PageView/All/29806423",
+        "https://factpages.sodir.no/en/company/PageView/All/50000147",
+        "https://factpages.sodir.no/en/company/PageView/All/4444493",
+        "https://factpages.sodir.no/en/company/PageView/All/5461974",
+        "https://factpages.sodir.no/en/company/PageView/All/35000009",
+        "https://factpages.sodir.no/en/company/PageView/All/41431",
+        "https://factpages.sodir.no/en/company/PageView/All/4966174",
+        "https://factpages.sodir.no/en/company/PageView/All/50000171",
+        "https://factpages.sodir.no/en/company/PageView/All/50000105",
+        "https://factpages.sodir.no/en/company/PageView/All/2455889",
+        "https://factpages.sodir.no/en/company/PageView/All/2490117",
+        "https://factpages.sodir.no/en/company/PageView/All/2747354",
+        "https://factpages.sodir.no/en/company/PageView/All/2845830",
+        "https://factpages.sodir.no/en/company/PageView/All/50000098",
+        "https://factpages.sodir.no/en/company/PageView/All/2359237",
+        "https://factpages.sodir.no/en/company/PageView/All/50000131",
+        "https://factpages.sodir.no/en/company/PageView/All/144",
+        "https://factpages.sodir.no/en/company/PageView/All/3437741",
+        "https://factpages.sodir.no/en/company/PageView/All/982372",
+        "https://factpages.sodir.no/en/company/PageView/All/27116238",
+        "https://factpages.sodir.no/en/company/PageView/All/50000079",
+        "https://factpages.sodir.no/en/company/PageView/All/50000100",
+        "https://factpages.sodir.no/en/company/PageView/All/2052695",
+        "https://factpages.sodir.no/en/company/PageView/All/3986518",
+        "https://factpages.sodir.no/en/company/PageView/All/155",
+        "https://factpages.sodir.no/en/company/PageView/All/42067",
+        "https://factpages.sodir.no/en/company/PageView/All/35285746",
+        "https://factpages.sodir.no/en/company/PageView/All/50000048",
+        "https://factpages.sodir.no/en/company/PageView/All/4062933",
+        "https://factpages.sodir.no/en/company/PageView/All/18178215",
+        "https://factpages.sodir.no/en/company/PageView/All/50000140",
+        "https://factpages.sodir.no/en/company/PageView/All/50000146",
+        "https://factpages.sodir.no/en/company/PageView/All/29806466",
+        "https://factpages.sodir.no/en/company/PageView/All/21333508",
+        "https://factpages.sodir.no/en/company/PageView/All/2862",
+        "https://factpages.sodir.no/en/company/PageView/All/41719",
+        "https://factpages.sodir.no/en/company/PageView/All/2825",
+        "https://factpages.sodir.no/en/company/PageView/All/3988120",
+        "https://factpages.sodir.no/en/company/PageView/All/166",
+        "https://factpages.sodir.no/en/company/PageView/All/27053497",
+        "https://factpages.sodir.no/en/company/PageView/All/5081918",
+        "https://factpages.sodir.no/en/company/PageView/All/2455315",
+        "https://factpages.sodir.no/en/company/PageView/All/29806483",
+        "https://factpages.sodir.no/en/company/PageView/All/2706",
+        "https://factpages.sodir.no/en/company/PageView/All/29806586",
+        "https://factpages.sodir.no/en/company/PageView/All/23269050",
+        "https://factpages.sodir.no/en/company/PageView/All/177",
+        "https://factpages.sodir.no/en/company/PageView/All/37781398",
+        "https://factpages.sodir.no/en/company/PageView/All/32055780",
+        "https://factpages.sodir.no/en/company/PageView/All/4504130",
+        "https://factpages.sodir.no/en/company/PageView/All/23268480",
+        "https://factpages.sodir.no/en/company/PageView/All/2473177",
+        "https://factpages.sodir.no/en/company/PageView/All/31044668",
+        "https://factpages.sodir.no/en/company/PageView/All/26444177",
+        "https://factpages.sodir.no/en/company/PageView/All/50000089",
+        "https://factpages.sodir.no/en/company/PageView/All/33984036",
+        "https://factpages.sodir.no/en/company/PageView/All/31044553",
+        "https://factpages.sodir.no/en/company/PageView/All/23297570",
+        "https://factpages.sodir.no/en/company/PageView/All/27122748",
+        "https://factpages.sodir.no/en/company/PageView/All/29806613",
+        "https://factpages.sodir.no/en/company/PageView/All/21333563",
+        "https://factpages.sodir.no/en/company/PageView/All/4970694",
+        "https://factpages.sodir.no/en/company/PageView/All/4238233",
+        "https://factpages.sodir.no/en/company/PageView/All/3000873",
+        "https://factpages.sodir.no/en/company/PageView/All/21333641",
+        "https://factpages.sodir.no/en/company/PageView/All/27053448",
+        "https://factpages.sodir.no/en/company/PageView/All/2527",
+        "https://factpages.sodir.no/en/company/PageView/All/27053462",
+        "https://factpages.sodir.no/en/company/PageView/All/23867343",
+        "https://factpages.sodir.no/en/company/PageView/All/102092",
+        "https://factpages.sodir.no/en/company/PageView/All/18085981",
+        "https://factpages.sodir.no/en/company/PageView/All/23867332",
+        "https://factpages.sodir.no/en/company/PageView/All/4966961",
+        "https://factpages.sodir.no/en/company/PageView/All/24551216",
+        "https://factpages.sodir.no/en/company/PageView/All/32080229",
+        "https://factpages.sodir.no/en/company/PageView/All/3488906",
+        "https://factpages.sodir.no/en/company/PageView/All/3988131",
+        "https://factpages.sodir.no/en/company/PageView/All/188",
+        "https://factpages.sodir.no/en/company/PageView/All/28161081",
+        "https://factpages.sodir.no/en/company/PageView/All/2154473",
+        "https://factpages.sodir.no/en/company/PageView/All/2748096",
+        "https://factpages.sodir.no/en/company/PageView/All/42078",
+        "https://factpages.sodir.no/en/company/PageView/All/2449882",
+        "https://factpages.sodir.no/en/company/PageView/All/916376",
+        "https://factpages.sodir.no/en/company/PageView/All/50000116",
+        "https://factpages.sodir.no/en/company/PageView/All/32017276",
+        "https://factpages.sodir.no/en/company/PageView/All/29853209",
+        "https://factpages.sodir.no/en/company/PageView/All/32035996",
+        "https://factpages.sodir.no/en/company/PageView/All/29853198",
+        "https://factpages.sodir.no/en/company/PageView/All/35285682",
+        "https://factpages.sodir.no/en/company/PageView/All/35000029",
+        "https://factpages.sodir.no/en/company/PageView/All/50000126",
+        "https://factpages.sodir.no/en/company/PageView/All/2845980",
+        "https://factpages.sodir.no/en/company/PageView/All/2385943",
+        "https://factpages.sodir.no/en/company/PageView/All/2359249",
+        "https://factpages.sodir.no/en/company/PageView/All/199",
+        "https://factpages.sodir.no/en/company/PageView/All/50000018",
+        "https://factpages.sodir.no/en/company/PageView/All/37706236",
+        "https://factpages.sodir.no/en/company/PageView/All/4460794",
+        "https://factpages.sodir.no/en/company/PageView/All/42056",
+        "https://factpages.sodir.no/en/company/PageView/All/41730",
+        "https://factpages.sodir.no/en/company/PageView/All/210",
+        "https://factpages.sodir.no/en/company/PageView/All/232",
+        "https://factpages.sodir.no/en/company/PageView/All/50000049",
+        "https://factpages.sodir.no/en/company/PageView/All/2748185",
+        "https://factpages.sodir.no/en/company/PageView/All/34949091",
+        "https://factpages.sodir.no/en/company/PageView/All/2943991",
+        "https://factpages.sodir.no/en/company/PageView/All/2144081",
+        "https://factpages.sodir.no/en/company/PageView/All/2410696",
+        "https://factpages.sodir.no/en/company/PageView/All/50000148",
+        "https://factpages.sodir.no/en/company/PageView/All/21333843",
+        "https://factpages.sodir.no/en/company/PageView/All/243",
+        "https://factpages.sodir.no/en/company/PageView/All/20460080",
+        "https://factpages.sodir.no/en/company/PageView/All/5125369",
+        "https://factpages.sodir.no/en/company/PageView/All/50000160",
+        "https://factpages.sodir.no/en/company/PageView/All/50000158",
+        "https://factpages.sodir.no/en/company/PageView/All/21333865",
+        "https://factpages.sodir.no/en/company/PageView/All/20415896",
+        "https://factpages.sodir.no/en/company/PageView/All/3437824",
+        "https://factpages.sodir.no/en/company/PageView/All/4526555"
+      ]
+    },
+    "https://www.proff.no/selskap/equinor-asa/stavanger/olje-og-gass/IF9W5A00VFQ": {
+      "kind": "error",
+      "error": "HTTPError: 403 Client Error: Forbidden for url: https://www.proff.no/selskap/equinor-asa/stavanger/olje-og-gass/IF9W5A00VFQ"
+    },
+    "https://utdanning.no/bedrift/923609016/": {
+      "kind": "page",
+      "status": 200,
+      "title": "EQUINOR ASA (923609016) - Stavanger | Utdanning.no",
+      "text": "EQUINOR ASA (923609016) - Stavanger | Utdanning.no\n\nStavanger i Rogaland Organisasjonsnummer 923609016\n\nEQUINOR ASA\n\nTilhører hovedenheten\n\nHar 35 underenheter\n\nForklaring\n\nGodkjente lærebedrifter kan gi opplæring i minst ett lærefag.\n\nGodkjent lærebedrift\n\nSelskapstype:\nAllmennaksjeselskap\n\nForklaring\n\nTallet hentes fra enhetsregisteret, som er et offentlig register levert av Brønnøysundregistrene. Les her for mer informasjon.\n\nAntall ansatte:\n21231\n\nDaglig leder:\nOpedal, Anders\n\nNettsted: www.equinor.com\n\nHvilke næringer er bedriften registrert med?\n\nProduksjon av raffinerte petroleumsprodukter og fossile brenselsprodukter\n\nUtvinning av naturgass\n\nUtvinning av råolje\n\nForklaring\n\nYrkene er basert på hvilke stillingskoder bedriften har rapportert inn til Arbeidsgiver- og arbeidstakerregistret gjennom A-meldingen. Les mer her .\n\nHvilket yrke er registrert på bedriften?\n\nIngen\n\nKontakt\n\nEQUINOR ASA\n\nBesøksadresse\nPostboks 8500\n4035 Stavanger\n\nPostadresse\nPostboks 8500\n4035 STAVANGER\n\nTelefonnummer\n51 99 00 00\n\nTilknyttede opplæringskontor\n\nDenne bedriften er medlem av ett eller flere opplæringskontor. Et opplæringskontor hjelper bedriften med det praktiske rundt det å ta inn og følge opp lærlinger. Bedriftene ønsker ofte at henvendelser om læreplasser skal gå via opplæringskontorene.\nDenne bedriften er også selvstendig lærebedrift. I fag der bedriften er angitt som Selvstendig lærebedrift, kan du sende henvendelser om læreplass direkte til bedriften.\n\nKokkfaget\n\nSTIFTELSEN REISELIVETS OPPLÆRINGSSENTER\n\nKran- og løfteoperasjonsfaget\n\nOPPLÆRINGSKONTORET FOR OFFSHORE FAG-OOF\n\nGodkjenninger og lærlinger\n\nDenne bedriften er godkjent lærebedrift. Oversikt over godkjenninger og lærekontrakter registrert på avdelinger / underenheter får du her .\n\nVestland Finnmark Rogaland\n\nViser alle fag med godkjenninger\n\nElektrikerfaget\n\n25 løpende lærekontrakter\n\nVestland 21 løpende lærekontrakter\n\nFinnmark 4 løpende lærekontrakter\n\nEnergioperatørfaget\n\n1 til 3 løpende lærekontrakter\n\nRogaland 1 til 3 løpende lærekontrakter\n\nIndustrimekanikerfaget\n\n1 til 3 løpende lærekontrakter\n\nVestland 19 løpende lærekontrakter\n\nFinnmark 1 til 3 løpende lærekontrakter\n\nKjemiprosessfaget\n\n70 løpende lærekontrakter\n\nVestland 46 løpende lærekontrakter\n\nFinnmark 24 løpende lærekontrakter\n\nLaboratoriefaget\n\n1 til 3 løpende lærekontrakter\n\nVestland 1 til 3 løpende lærekontrakter\n\nFinnmark 1 til 3 løpende lærekontrakter\n\nLogistikkfaget\n\n1 til 3 løpende lærekontrakter\n\nVestland 1 til 3 løpende lærekontrakter\n\nVg3 Automatiseringsfaget\n\n1 til 3 løpende lærekontrakter\n\nVestland 16 løpende lærekontrakter\n\nFinnmark 1 til 3 løpende lærekontrakter\n\nKokkfaget\n\n8 løpende lærekontrakter\n\nVestland 8 løpende lærekontrakter\n\nKran- og løfteoperasjonsfaget\n\n6 løpende lærekontrakter\n\nRogaland Ingen løpende lærekontrakter\n\nVestland 6 løpende lærekontrakter\n\nLogistikkfaget\n\nForklaring\n\nMed innføringen av LK20 (fagfornyelsen) har alle lærefag fått ny læreplan. Lærebedriften sin godkjenning kan være knyttet til gammel læreplan. Bedriften må derfor godkjennes på nytt av fylkeskommunen etter ny læreplan.\n\nGammelt fag\n\nFinnmark Ingen løpende lærekontrakter\n\nService- og administrasjonsfaget\n\nForklaring\n\nMed innføringen av LK20 (fagfornyelsen) har alle lærefag fått ny læreplan. Lærebedriften sin godkjenning kan være knyttet til gammel læreplan. Bedriften må derfor godkjennes på nytt av fylkeskommunen etter ny læreplan.\n\nGammelt fag\n\n1 til 3 løpende lærekontrakter\n\nRogaland 1 til 3 løpende lærekontrakter\n\nVestland 1 til 3 løpende lærekontrakter\n\nFinnmark 1 til 3 løpende lærekontrakter\n\nVis utløpte godkjenninger\n\nBedriftstruktur\n\nGodkjenninger kan være knyttet til andre nivåer i bedriften. For å lære mer om bedriftens ulike godkjenninger kan du undersøke hierarkiet og strukturen nærmere.\n\nEQUINOR ASA\n\nOrganisasjonsnummer 923609016\n\nEQUINOR ASA AVD KONTOR BERGEN\n\nEQUINOR ASA AVD TNE NE HYD HT PROJECT\n\nEQUINOR ASA AVD HAMMERFEST LNG SNØHVIT\n\nEQUINOR ASA AVD FIELD LIFE EXTENTIONS\n\nEQUINOR ASA AVD RENEWABLE ENERGY\n\nVis alle avdelinger og underenheter\n\nSamarbeidsavtaler - YFF\n\nSamarbeidet mellom bedrifter og skole gir elever i videregående skole mulighet til å prøve seg ut i et eller flere relevante fagfelt. Avtalen er formalisert gjennom et eget system, og det er ikke alle skoler og bedrifter som benytter seg av det. Det betyr at selv om du ikke finner en avtale her kan denne bedriften fortsatt være aktuell. Elever og andre som ønsker å vite mer om denne avtalen må ta kontakt med skolens kontaktperson.\n\nDet er ikke registrert noen YFF avtaler på denne bedriften, men den kan likevel være aktuell for praksisplass. Ta kontakt med bedriften om du vil undersøke muligheten for å få en YFF-avtale og praksisplass.\n\nAutorisasjoner og andre godkjenninger\n\nDet finnes mange typer godkjenninger og autorisasjoner foruten godkjenninger som lærebedrift. Her har vi samlet godkjenningsordninger som er relevante for lærefag. Disse godkjenningene kan bidra til å finne seriøse aktører blant virksomhetene som ennå ikke er godkjente lærebedrifter.\n\nNasjonal kommunikasjonsmyndighet (NKOM) Autorisasjonsregisteret\n\nEkomnettautorisasjon gir mulighet for å utføre installasjon og vedlikehold av alle typer ekomnett som definert i ekomloven.",
+      "links": [
+        "/bedrift/null/",
+        "https://utdanning.no/tema/slik_fungerer_finnlaerebedrift",
+        "https://www.equinor.com",
+        "https://utdanning.no/tema/slik_fungerer_finnlaerebedrift#datakilde_aareg",
+        "/bedrift/968881280/",
+        "/bedrift/981003446/",
+        "/finnlarebedrift/resultat/?q=923609016",
+        "/bedrift/923609016/",
+        "/bedrift/873152362/",
+        "/bedrift/891770812/",
+        "/bedrift/893247092/",
+        "/bedrift/924658622/",
+        "/bedrift/934203631/",
+        "https://www.nkom.no/ekom-markedet/liste-over-registrerte-tilbydere"
+      ]
+    },
+    "https://www.northdata.com/Equinor%20ASA,%20Stavanger/BR%20923609016": {
+      "kind": "page",
+      "status": 200,
+      "title": "Equinor ASA, Stavanger, Norway, The Brønnøysund Register Centre 923609016: Network, Financial information",
+      "text": "Equinor ASA, Stavanger, Norway, The Brønnøysund Register Centre 923609016: Network, Financial information\n\nHome\n\nPremium Services\n\nData Services\n\nLogin\n\nPremium Services\n\nData Services\n\nLogin\n\nEuropean Companies Search Engine\n\nQuick Search\n\nPower Search\n\nTips & Tricks\n\nOur help pages\n\nUsing the Quick Search\n\nand\nPower Search Overview\n\nexplain how to use our search engine.\n\nCountry filter\n\nRestrict the search to companies and persons in specific\ncountries by selecting the desired countries here.\n\nall countries\n\nUnited Kingdom\n\nAustria\n\nBelgium\n\nCroatia\n\nCyprus\n\nCzech Republic\n\nDenmark\n\nEstonia\n\nFinland\n\nFrance\n\nGermany\n\nGreece\n\nIreland\n\nIsrael\n\nLithuania\n\nLuxembourg\n\nMalta\n\nNetherlands\n\nNorway\n\nPoland\n\nPortugal\n\nRomania\n\nSlovakia\n\nSpain\n\nSweden\n\nSwitzerland\n\nUkraine\n\nCountry\n\nThe fields Country , Place and\nRadius\nare explained in the help center article about\n\nGeographic Filters .\n\nAll countries\n\nUnited Kingdom\n\nAustria\n\nBelgium\n\nCroatia\n\nCyprus\n\nCzech Republic\n\nDenmark\n\nEstonia\n\nFinland\n\nFrance\n\nGermany\n\nGreece\n\nIreland\n\nIsrael\n\nLithuania\n\nLuxembourg\n\nMalta\n\nNetherlands\n\nNorway\n\nPoland\n\nPortugal\n\nRomania\n\nSlovakia\n\nSpain\n\nSweden\n\nSwitzerland\n\nUkraine\n\nTax Havens\n\n(Cyprus, Guernsey, Jersey, Liechtenstein, Luxembourg, Malta, Monaco)\n\nPlace\n\nRadius\n\nkm\n\nmiles\n\nLegal form\n\nRefer to the help center article about the\n\nlegal forms filter\n\nto learn how to refine search results based on international\nlegal form families and country-specific legal forms.\n\nAll legal forms\n\nCorporation\n\nLimited Liability Company\n\nGeneral Partnership\n\nLimited Partnership\n\nCooperative\n\nAssociation\n\nFoundation\n\nSole proprietorship\n\nPolity\n\nA/S\n\nA.M.B.A.\n\na.s.\n\nAB\n\nACP\n\nAF\n\nAG\n\nAIE\n\nANS\n\nAöR\n\nAPROJ\n\nApS\n\nAS\n\nASA\n\nASBL\n\nAssociação\n\nAssociation\n\nAy\n\nB.A.\n\nB.I.\n\nB.V.\n\nB. Ver.\n\nBA\n\nBL\n\nbt.\n\nBVBA\n\nBV BVBA\n\nBV LV\n\nBV NV\n\nCA\n\nCB\n\nCIAS\n\nCIO\n\nCLG\n\nComm.V\n\nComm.VA\n\nCommV\n\nCorp.\n\nCRL\n\nCUMA\n\nCV\n\nCVBA\n\nCVOA\n\nd.d.\n\nd.o.o.\n\nDA\n\nDAC\n\nDegë\n\ndružstvo\n\ne.c.\n\ne. K.\n\ne.U.\n\ne. V.\n\ne.v.\n\nEBVBA\n\nEESV\n\neG\n\neGbR\n\nEGIU\n\nEI\n\nENK\n\nEnskild näringsidkare\n\nESV\n\nEUPP\n\nEUPS\n\nEWIV\n\nEZHZ\n\nF.M.B.A.\n\nFIE\n\nFKF\n\nFlexKapG\n\nFO\n\nFoundation\n\nFP\n\nFPEU\n\nFundacja\n\nFZCO\n\nFZE\n\nG/S\n\nGAEC\n\ngAG\n\nGbR\n\nGEIE\n\nGFA\n\ngGmbH\n\nGIE\n\nGIP\n\nGIU\n\nGmbH\n\nGP\n\ngSE\n\ngUG\n\nHB\n\nHF\n\nI/S\n\nIC\n\nICAV\n\nICC\n\nIF\n\nIĮ\n\nII\n\nIKS\n\nInc.\n\nINCD\n\nInvAG\n\nIVS\n\nj.d.o.o.\n\nj.s.a.\n\nj.t.d.\n\nJPahR\n\nK/S\n\nK.B.\n\nk.d.\n\nk.s.\n\nKB\n\nKEG\n\nKF\n\nkft.\n\nKG\n\nKGaA\n\nkkt.\n\nKlG\n\nKLG\n\nKooperacijos įmonė\n\nKooperacijos uždaroji akcinė bendrovė\n\nKöR\n\nKS\n\nKÜ\n\nKŪB\n\nLda.\n\nLLC\n\nLLP\n\nLP\n\nLtd.\n\nLV\n\nMB\n\nMTÜ\n\nN.P.\n\nN.SH.\n\nN.V.\n\nNJAKM\n\nNyrt.\n\nO.P.\n\no.p.s.\n\nObrt\n\nOC\n\nOCC\n\nOCM\n\nOCR\n\nOFP\n\nOG\n\nOHG\n\nOPG\n\nOPHLM\n\nosk\n\nOÜ\n\nOy\n\nOyj\n\nP/S\n\nPartG\n\nPartG mbB\n\nPC\n\nPCC\n\nPerson Fizik\n\nPETR\n\nPF\n\nPFA\n\nplc\n\nPodružnica\n\nPPEU\n\nPredstavništvo\n\nPROJ V\n\nPS\n\nPSA\n\nRA\n\nREITG\n\nRHF\n\nS. Agr.\n\nS.COM.p.A.\n\nS.COM.p.A.P.\n\nS.COOP.\n\nS.CRA.\n\nS.K.A.\n\nS.M.B.A.\n\nS.p.A.\n\ns.r.o.\n\nSA\n\nSAD\n\nSagl\n\nSAL\n\nSàrl\n\nSàrl-S\n\nSAS\n\nSC\n\nSCA\n\nSCCL\n\nSCE\n\nSCE mbH\n\nSCI\n\nSCIO\n\nSComm\n\nSCP\n\nSCPI\n\nSCRI\n\nSCRL\n\nSCS\n\nSC SA\n\nSC SAGR\n\nSCSp\n\nSC SPRL\n\nSDIS\n\nSE\n\nSELAFA\n\nSELARL\n\nSELCA\n\nSENC\n\nSF\n\nSGPS SA\n\nSh.a.\n\nSh.a. Publike\n\nSh. Bashkëpunim Bujqësor\n\nSh. Bashkëveprim Reciprok\n\nSh.e Thjeshtë\n\nSh. Kolektive\n\nSh. Komandite\n\nSh. Kursim Krediti\n\nSh.p.k.\n\nSIA\n\nSISA\n\nSIVOM\n\nSIVU\n\nSL\n\nSLL\n\nSLNE\n\nSLP\n\nSNC\n\nsp.j.\n\nsp.k.\n\nsp.p.\n\nsp. z o.o.\n\nSPFPL\n\nSpółdzielnia\n\nSpR\n\nSPRL\n\nSPRLU\n\nsr\n\nSrl\n\nSrls\n\nStowarzyszenie\n\nSUA\n\nSVJ\n\nszöv.\n\nT:mi\n\nTicaret Ltd. Şti.\n\nTrust\n\nTÜ\n\nTŪB\n\nTÜH\n\nU.A.\n\nUAB\n\nUdruga\n\nUG\n\nÜhistu\n\nULC\n\nUP\n\nUTE\n\nUÜ\n\nv.o.s.\n\nVOF\n\nVVaG\n\nVvE\n\nVZW\n\nW.A.\n\nwV\n\nZ.P.K.\n\nz.s.\n\nZadruga\n\nživnost\n\nZrt.\n\nZweckV\n\nΑΕ\n\nΑΤΟΜΙΚΗ\n\nΕΕ\n\nΕΠΕ\n\nΙΚΕ\n\nΜΑΕ\n\nΟΕ\n\nІОПФ\n\nАД\n\nАДСИЦ\n\nАО\n\nАС\n\nАТ\n\nБО\n\nВК\n\nГО\n\nГС\n\nДП\n\nДПК\n\nЕАД\n\nЕАДСИЦ\n\nЕД\n\nЕДПК\n\nЕКД\n\nЕКДОО\n\nЕОИИ\n\nЕООД\n\nЕТ\n\nЖБК\n\nЗАО\n\nЗАТ\n\nК\n\nКД\n\nКДА\n\nКО\n\nКОНС\n\nКОРП\n\nКП\n\nКС\n\nКТ\n\nКЧТ\n\nОАО\n\nОВВ\n\nОК\n\nОМС\n\nООД\n\nООО\n\nОСББ\n\nПАО\n\nПАТ\n\nПО\n\nПП\n\nПС\n\nПТ\n\nПрАТ\n\nРО\n\nСД\n\nСТ\n\nСФГ\n\nСдружение\n\nТДВ\n\nТОВ\n\nТОО\n\nТПП\n\nФГ\n\nФОП\n\nФондация\n\nЧДПР\n\nבע\"מ\n\nLegal status\n\nRefer to the help center article about\n\ncompany legal status\n\nfor an explanation of the terms Active ,\nLiquidation and Terminated .\n\nAll\n\nActive\n\nLiquidation\n\nTerminated ✝︎\n\nSearch keywords\n\nSearch keywords\nrestrict the search the companies that contain one or more of\nthe keywords in their company name, their corporate purpose,\ntheir industry segment or trademarks.\n\nIndustry segment\n\nRestrict the search to companies from one or more industry\nsegments by selecting from the drop down list.\n\nStandard\n\nSelect the\nindustry segment classification\nstandard, that is used to choose the\nindustry segment .\n\nAll industries\n\nUKSIC\n\nUK standard industrial classification of economic activities (\n→ UKSIC 2007\n\n)\n\nNACE\n\nStatistical Classification of Economic Activities in the EU (\n→ NACE Rev. 2.1\n\n)\n\nISIC\n\nInternational Standard Industrial Classification (United Nations industry classification system) (\n→ ISIC 4.0\n\n)\n\nNAICS\n\nNorth American Industry Classification System (classification of business establishments used in Canada, the US and Mexico) (\n→ NAICS 2017\n\n)\n\nPerformance indicator\n\nEvent filter\n\nSubmit search\n\nPower search is only available to our premium service subscribers.\n\nLearn more about the North Data Premium Service\n\nPerformance indicators\n\nDetailed information for these filters is available in our help\ncenter article about\n\nPerformance Indicator filtering .\n\nPerformance indicator\n\nAverage salaries per employee\n\nBase/share capital\n\nCash on hand\n\nCost of materials\n\nEarnings\n\nEarnings CAGR\n\nEmployee number\n\nEquity\n\nEquity ratio\n\nLiabilities\n\nNumber of public fundings per year\n\nOwnership Concentration\n\nPatents per year\n\nPension provisions\n\nReal estate\n\nReceivables\n\nReturn on equity\n\nReturn on sales\n\nRevenue\n\nRevenue CAGR\n\nRevenue per employee\n\nTaxes\n\nTax ratio\n\nTotal assets\n\nTotal public funding per year\n\nTrademarks per year\n\nWages and salaries\n\n-\n\nEvents\n\nDetailed information for these filters is available in our help\ncenter article about\n\nEvent Filters .\n\nEvent\n\nAddress change\n\nAnnual report\n\nCapital change\n\nChange of control\n\nCompany statute\n\nContinuation\n\nInsolvency filing\n\nInsolvency proceedings update\n\nLegal form change\n\nLEI Allocation\n\nLiquidation\n\nManagement change\n\nMerger/Acquisition\n\nName change\n\nPatent\n\nPublic funding\n\nRegister change\n\nRegistration\n\nRestoration\n\nShareholder agreement\n\nTermination\n\nTrademark\n\n-\n\nEquinor ASA, Stavanger, Norway\n\nDossier\n\nWatch\n\nWatch\n\nEquinor ASA\n\nYou have reached the maximum number of watches. This number depends\non your subscription plan. This\nlink will\ntake you to the overview.\n\nIf you put a company on your watch list, we'll notify you on your email\naddress\nwhen there are new publications regarding\nthis company.\n\nThis feature is only available to our premium service subscribers.\n\nLearn more about the North Data Premium Service\n\nSet watch\n\nCancel\n\nPremium Service\n\nUnlock Dossier\n\nWhat is a Dossier?\n\nA dossier provides comprehensive company details as a PDF, together\nwith all underlying original publications and original data in one\nplace.\n\nThe download feature is exclusively available for our paid plan.\nUpgrade your account to access:\n\nQuick Dossier\n\nEntire company details as a PDF\n\nPower Dossier\n\nEntire company details along with all original publications\n/ original data bundled in a ZIP file\n\nUpgrade to unlock all features\n\nPremium plans starting from\n€/month\n\nLearn more\n\nLearn more\n\nView plans\n\nCancel\n\nName\n\nEquinor ASA\n\nStatoilhydro ASA\n\nIdentification\n\nCcrcom\nThe Brønnøysund Register Centre 923609016\n\nSirul\nSiren 503904963\n\nKbo\nCrossroads Bank for Enterprises (KBO) 0427.781.084\n\nStockp\nEQNR\n\nEQNR.OL\n\nSTOHF\n\nSiret\nSiret 50390496300017\n\nLei\nOW6OFBNCKXC4US5C7523\n\nEUID\nNOFOR.923609016\n\nAddress\n\nForusbeen 50, 4035 Stavanger, Norway\n\nCorporate purpose\n\n2911\n\nPetroleum Refining\n\nYourself, or through participation in or with other companies, to\ndeveloping, producing and marketing various forms of energy, derived\nproducts and services, as well as other activities. Rental of buildings and\nfacility.\n\nFinancial performance\n\nHistory\n\nMarketing & Tech\n\nNetwork\n\nLoading network\n\nLegal Structure\n\nCurrent legal representatives\nLegal form information\nPremium\n\nPremium\n\n1 Chair of the board\n\n1 CEO\n\n9 Member of the board\n\n3 Deputy member of the board\n\nUpgrade to unlock all features\n\nPremium plans starting from\n€/month\n\nLearn more\n\nView plans\n\nLearn more\n\nView plans\n\nQuarterly Exports in CSV\n\nNow available in CSV format and optimized for applications in AI and\nAnalytics:\n\nNorth Data's quarterly exports have become the industry standard for\ncompany information.\n\nOwnership relations\n\nPremium + Ownership & Flags add-on\n\nPremium + Ownership & Flags add-on\n\nShareholders and Investors\n\nOne known shareholder\n\nPortfolio and Investments\n\n11 known active shareholdings\n\nUpgrade to unlock all features\n\nPremium plans starting from\n€/month\n\nLearn more\n\nView plans\n\nLearn more\n\nView plans\n\nFinancials\n\nKey Performance Indicators\nFinancial · Mktg & Tech\nPremium\n\nPremium\n\nTotal assets\n\nEarnings\n\nEarnings CAGR\n\nRevenue\n\nRevenue CAGR\n\nReturn on sales\n\nEquity\n\nEquity ratio\n\nReturn on equity\n\nEmployee number\n\nRevenue per employee\n\nTaxes\n\nTax ratio\n\nCash on hand\n\nReceivables\n\nLiabilities\n\nTotal public funding\n\nNumber of public fundings\n\nUpgrade to unlock all features\n\nPremium plans starting from\n€/month\n\nLearn more\n\nView plans\n\nLearn more\n\nView plans\n\nAnnual report\n\nFinancial Statements\nInteractive sheets with CSV/Excel download\nPremium\n\nPremium\n\nBalance\n\nfrom 2005 to 2025\n\nProfit & Loss\n\nfrom 2005 to 2025\n\nUpgrade to unlock all features\n\nPremium plans starting from\n€/month\n\nLearn more\n\nView plans\n\nLearn more\n\nView plans\n\nPublications\n\n\n\n24 Jun 2026\n\nvia\n\nEurogas - European Union of the Natural Gas Industry VZW\n\nalso\n\n24/05/2024\n\nNo longer Director: Eurogas - European Union of the Natural Gas Industry VZW\n\n\n\n11 Jun 2026\n\nvia\n\nEuropean Fuel Manufacturers Association\n\nAnnual report for the year ending 31/12/2025 · Balance sheet for 31/12/2025 · Earnings statement for 31/12/2025 · Director (16) · Pres. (1) · Treasurer (1) · Chair (1) · DG (1) · Chair SB (1) · Vice …\n\n\n\n30 Apr 2026\n\nU.S. Securities and Exchange Commission's Electronic Data Gathering, Analysis, and Retrieval system\n\n\n\n28 Mar 2026\n\nEuropean Union Transparency Register\n\n\n\n19 Mar 2026\n\nU.S. Securities and Exchange Commission's Electronic Data Gathering, Analysis, and Retrieval system\n\n\n\n11 Feb 2026\n\nvia\n\nantea InvAG mit veränderlichem Kapital und Teilgesellschaftsvermögen\n\nShareholder: antea InvAG mit veränderlichem Kapital und Teilgesellschaftsvermögen\n\n\n\n31 Dec 2025\n\nAnnual report\n\n\n\n31 Dec 2025\n\nBalance sheet for 31/12/2025 · Earnings statement for 31/12/2025\n\n\n\n29 Oct 2025\n\nU.S. Securities and Exchange Commission's Electronic Data Gathering, Analysis, and Retrieval system\n\n\n\n1 Aug 2025\n\nin\n\nFts\n\nEU funding (€40.5M): H2M Eemshaven: Kick Starting the EU Hydrogen Value Chain by Realizing a 1,000 MW LOW-Carbon Hydrogen Production Plant in the Eemshaven (NL) Industrial Area.\n\n\n\n20 Mar 2025\n\nU.S. Securities and Exchange Commission's Electronic Data Gathering, Analysis, and Retrieval system\n\n\n\n24 Feb 2025\n\nvia\n\nOptinova InvAG mit Teilgesellschaftsvermögen\n\nShareholder: Optinova InvAG mit Teilgesellschaftsvermögen\n\n\n\n1 Feb 2025\n\nin\n\nFts\n\nEU funding (€19.9M): H2BE: the First 1GW LOW-Carbon H2 Production Facility to Enable and Accelerate Industrial Decarbonisation, Critical H2/CO2 Infrastructure Realisation and H2 Market Development in …\n\n\n\n30 Jan 2025\n\nvia\n\nODDO BHF Asset Management GmbH\n\nShareholder: ODDO BHF Asset Management GmbH\n\n\n\n31 Dec 2024\n\nAnnual report\n\n\n\n31 Dec 2024\n\nBalance sheet for 31/12/2024 · Earnings statement for 31/12/2024\n\n\n\nvia CVR\n\nin\n\nCvrpc\n\n2 Shareholdings: Equinor Danmark A/S, Ørsted A/S · Voting rights: Equinor Danmark A/S, Ørsted A/S · Shareholding: Ørsted A/S · No longer Voting rights: Ørsted A/S\n\n\n\nYear 2024\n\nin\n\nFts\n\n6 EU fundings (total €96.4M): France CO2 Network Connection to CO2 Highway Europe\nthe French CO2 Transport and Storage Pipeline Solution …\n\n\n\n26 Jun 2024\n\nPatent: Electrical protection system and procedure for an offshore wind farm\n\n\n\n21 Mar 2024\n\nU",
+      "links": [
+        "/",
+        "/_premium",
+        "/_data",
+        "/_login?targetUrl=https%3A%2F%2Fwww.northdata.com%2FEquinor%2520ASA%2C%2520Stavanger%2FBR%2520923609016",
+        "https://help.northdata.com/en/center/using-the-simple-search",
+        "https://help.northdata.com/en/center/power-search-overview",
+        "https://help.northdata.com/en/center/power-search-geographic-filters",
+        "https://help.northdata.com/en/center/power-search-legal-forms",
+        "https://help.northdata.com/en/center/company-legal-status",
+        "https://help.northdata.com/en/center/keywords",
+        "https://help.northdata.com/en/center/how-do-different-industry-segment-standards-relate-to-each-other",
+        "https://www.ons.gov.uk/methodology/classificationsandstandards/ukstandardindustrialclassificationofeconomicactivities/uksic2007",
+        "https://ec.europa.eu/eurostat/web/nace",
+        "https://unstats.un.org/unsd/classifications/",
+        "https://www.census.gov/naics/",
+        "https://help.northdata.com/en/center/power-search-performance-indicator",
+        "https://help.northdata.com/en/center/event-filter",
+        "https://www.northdata.com/_premium#plans",
+        "/_premium#plans",
+        "/?id=5394876867805184",
+        "/Forusbeen%2050,%20N-4035%20Stavanger",
+        "https://www.northdata.com/_csvexport?utm_source=banner&utm_medium=website&utm_campaign=csv_export_en",
+        "/?id=6356635637383168",
+        "/Eurogas%20-%20European%20Union%20of%20the%20Natural%20Gas%20Industry%20VZW,%20Bruxelles/KBO%200441.122.247",
+        "/?id=5839715687464960",
+        "/?id=5232977277747200",
+        "/European%20Fuel%20Manufacturers%20Association%20VZW,%20Etterbeek/KBO%200440.441.663",
+        "/?id=5453789205233664",
+        "/?id=5702280386183168",
+        "/?id=5057247553781760",
+        "/?id=4931941006311424",
+        "/antea%20InvAG%20mit%20ver%C3%A4nderlichem%20Kapital%20und%20Teilgesellschaftsverm%C3%B6gen,%20Hamburg/HRB%20130042",
+        "/?id=5866931439665152",
+        "/?id=4747007075549184",
+        "/?id=5962060690882560",
+        "/?id=5928091128037376",
+        "/?id=4512251537784832",
+        "/?id=6557432151801856",
+        "/Optinova%20InvAG%20mit%20Teilgesellschaftsverm%C3%B6gen,%20K%C3%B6nigstein%20i%C2%B7%20Taunus/Amtsgericht%20Bad%20Homburg%20HRB%2012623",
+        "/?id=5345832847147008",
+        "/?id=6021426377916416",
+        "/ODDO%20BHF%20Asset%20Management%20GmbH,%20D%C3%BCsseldorf/HRB%2011971",
+        "/?id=5060462595801088",
+        "/?id=6458204498952192",
+        "/?id=5625113802309632",
+        "/?id=5629642272800768",
+        "/?id=5549600089964544",
+        "/?id=6377240333123584",
+        "/?id=6650979109044224",
+        "/?id=6251355155726336",
+        "/?id=4638901453193216",
+        "/?id=4630277241962496",
+        "/?id=5515321036505088",
+        "/?id=5525544572289024",
+        "/?id=5400470128951296",
+        "/?id=4753787517665280",
+        "/?id=5149286896762880",
+        "/Mitsubishi%20Electric%20Corporation,%20%E5%8D%83%E4%BB%A3%E7%94%B0%E5%8C%BA,%20JP/BR%20933432114",
+        "/?id=5822896932126720",
+        "/?id=6735360242483200",
+        "/?id=6751381779382272",
+        "/?id=4510345489285120",
+        "/?id=5435319523213312",
+        "/?id=4672071964557312",
+        "/?id=6347649187",
+        "/?id=6699295941",
+        "/?id=5214741572354048",
+        "/?id=6490140441",
+        "/?id=5170034120065024",
+        "/?id=5946739252264960",
+        "/?id=6482778630389760",
+        "/?id=5586019220979712",
+        "/?id=6343319357",
+        "/?id=4698707118522368",
+        "/?id=4981948643803136",
+        "/?id=5703113082929152",
+        "/?id=4527962483326976",
+        "/?id=5340082698190848",
+        "/?id=4891673268846592",
+        "/?id=5254726471122944",
+        "/?id=5929218732982272",
+        "/?id=5478836851",
+        "/Hamburger%20Hof%20Versicherungs-AG,%20D%C3%BCsseldorf/HRB%2033489",
+        "/?id=5919531426",
+        "/?id=5686559058952192",
+        "/?id=5104350134009856",
+        "/?id=6088972676366336",
+        "/?id=6214918799884288",
+        "/?id=5809188531863552",
+        "/?id=5073043447611392",
+        "/?id=6117433801965568",
+        "/?id=6682783744524288",
+        "/?id=5953699758473216",
+        "/?id=5904334603",
+        "/?id=4597131321802752",
+        "/?id=5653862390169600",
+        "/?id=5848483465265152",
+        "/?id=6123722182230016",
+        "/?id=4632996705468416",
+        "/Statoil%20Asa,%20Stavanger,%20NO/_c4649707070816256",
+        "/?id=6308463450",
+        "/?id=6511757259",
+        "/?id=6332477639",
+        "/?id=5904341143",
+        "/?id=5076174357921792",
+        "/?id=5560772228808704",
+        "/?id=4589317970984960",
+        "/?id=4796510413783040",
+        "/?id=6498808618",
+        "/?id=6347906616",
+        "/?id=5639124311343104",
+        "/?id=4888553743974400",
+        "/?id=6033730203025408",
+        "/?id=4987884895469568",
+        "/?id=6627217623482368",
+        "/?id=4627849724035072",
+        "/?id=6478648305516544",
+        "/?id=5535309204815872",
+        "/?id=5759326252433408",
+        "/?id=5922410320625664",
+        "/?id=5197842886950912",
+        "/?id=6057064180744192",
+        "/?id=6633968324313088",
+        "/?id=5038990342225920",
+        "/?id=6043869303013376",
+        "/?id=5887033203490816",
+        "/?id=4830125439057920",
+        "/?id=4530165929738240",
+        "/?id=4540425438232576",
+        "/?id=5785954906275840",
+        "/?id=6012136474017792",
+        "/?id=6532206212153344",
+        "/?id=5198783189876736",
+        "/Quoniam%20Asset%20Management%20GmbH,%20Frankfurt%20a%C2%B7%20Main/Amtsgericht%20Frankfurt%20am%20Main%20HRB%2017579",
+        "/?id=6347370502",
+        "/?id=6347370503",
+        "/?id=6152938523459584",
+        "/?id=6183274185490432",
+        "/?id=6306538302078976",
+        "/?id=5085478970458112",
+        "/?id=6644935751892992",
+        "/?id=6354877601",
+        "/?id=4680049993187328",
+        "/?id=5733800739340288",
+        "/?id=5113440888815616",
+        "/?id=4991369182183424",
+        "/?id=5640319158714368",
+        "/?id=5946882308702208",
+        "/?id=6014453650817024",
+        "/?id=5752767693979648",
+        "/?id=4867587819175936",
+        "/?id=6171301184012288",
+        "/?id=5190116855775232",
+        "/?id=6360707239510016",
+        "/?id=5805949900029952",
+        "/?id=5462984103034880",
+        "/?id=5596007937605632",
+        "/?id=4651352412651520",
+        "/?id=4703524944871424",
+        "/?id=6179120564666368",
+        "/?id=6196208679256064",
+        "/?id=5533055796641792",
+        "/?id=6159585224687616",
+        "/?id=5541540236099584",
+        "/?id=6251828723843072",
+        "/?id=6440999216218112",
+        "/?id=6132578336112640",
+        "/?id=5541470577098752",
+        "/?id=5624772273111040",
+        "/?id=6096226404007936",
+        "/?id=5967762187354112",
+        "/?id=5404812233932800",
+        "/?id=6372704832192512",
+        "/?id=6555213383598080",
+        "/?id=5009870879981568",
+        "/?id=5497352403550208",
+        "/?id=5381657232670720",
+        "/?id=5622630198018048",
+        "/?id=5096017630593024",
+        "/?id=5342499168583680",
+        "/?id=5405758550704128",
+        "/?id=5019688310931456",
+        "/?id=4677928637431808",
+        "/?id=5763649672577024",
+        "/?id=6402418652479488",
+        "/_coverage",
+        "https://help.northdata.com/en/center",
+        "https://blog.northdata.com",
+        "https://welcome.northdata.com/en/newsletter",
+        "/_career",
+        "https://www.northdata.de/Equinor%20ASA,%20Stavanger/BR%20923609016",
+        "/_contact",
+        "/_about",
+        "/_journalism",
+        "/_terms",
+        "/_privacy",
+        "/_agb",
+        "https://hubs.li/Q043Zt9t0"
+      ]
+    },
+    "https://www.equinor.com": {
+      "kind": "page",
+      "status": 200,
+      "title": "",
+      "text": "Skip to main content\n\nExplore\n\nInvestors Careers Sustainability About us Contact us\n\nConnect\n\nFacebook Instagram LinkedIn Youtube\n\nSite\n\nPrivacy policy Cookie policy Accessibility statement Terms and conditions Site info\n\nCopyright 2026 Equinor ASA\n\nEquinor: Providing reliable energy for a world in transition. - Equinor\n\nSearch\n\nEnglish (UK) en\n\nNorwegian no\n\nMenu\n\nEquinor. Providing reliable energy for a world in transition.\n\nHow the gas we produce supports both energy and food security\n\nFrom natural gas to food on the table\n\nThe story that connects grain fields in Lithuania to gas reservoirs beneath the Barents Sea\n\nWhat is energy security?\n\nHere’s what it means, why it matters and how Equinor helps strengthen it.\n\nThe role of natural gas\n\nLearn how natural gas underpins modern society.\n\nIn a world shaped by uncertainty, growing demand and the need to reduce emissions, we deliver secure and lower-emission energy.\n\nIn Equinor, we combine a strong oil and gas business with a growing power business, supported by trading and market expertise. This is how we will meet energy needs, strengthen energy security and create long-term value.\n\nWe aim to grow across oil, gas, power and trading, and to capture opportunities in a changing energy system.\n\nEnergy for people. Progress for society. Searching for better\n\nAbout us\n\nOpen positions & careers\n\nEquinor in brief\n\nVåre nettsider på norsk\n\nLatest news\n\n14 October 2026\n\nOil and gas discovery in the North Sea adding volumes to Oseberg\n\nEquinor and its partners Petoro and TotalEnergies have made an oil and gas discovery in exploration well 30/8-7 S Grimsnes near the Oseberg field. The partnership is planning a fast and cost-effective development.\n\n13 October 2026\n\nEquinor and Eneco sign five-year gas agreement with verified emissions data\n\nEquinor and Dutch energy company Eneco have signed a five-year agreement for natural gas deliveries. The covers around 9 TWh of natural gas per year, or approximately 0.9 billion cubic metres, to the Dutch gas grid with deliveries started on 1 October 2026.\n\n9 October 2026\n\nEquinor and Shell partner on the Bay du Nord project\n\nEquinor and Shell have signed an agreement under which Shell will acquire a 30% interest in the Bay du Nord project offshore Newfoundland and Labrador in Canada. The transaction supports the continued maturation of Bay du Nord towards an investment decision currently targeted for early 2027.\n\nMore news\n\nAll corporate news\n\nSubscribe to our news\n\nOur social media channels\n\nMedia relations & contacts\n\nLooking for summer job in Equinor?\n\nWe are now accepting applications for the 2027 summer internships.\n\nIf you are a student considering a career in Equinor or the energy industry, our summer internships give you the perfect opportunity to gain hands-on experience in a changing world.\n\nRead more about our summer internships\n\nCurrent and forthcoming events\n\nView all events\n\nEquinor and Aker BP Supplier Day – Harstad 2026\n\n28 October 2026\n\n08:00\n\n-\n\n10:45 (CET)\n\nQuality Hotel Harstad\n\nEquinor Q3 2026 press conference\n\n28 October 2026\n\n09:00\n\n-\n\n09:30 (CET)\n\nEquinor Q3 2026 results - analyst conference\n\n28 October 2026\n\n11:30\n\n-\n\n12:30 (CET)\n\nAnalyst call\n\nAutumn Conference 2026\n\n24 November 2026\n\n09:00\n\n-\n\n12:30 (CET)\n\nLive stream on equinor.com\n\nCarousel controls\n\nEquinor at ONS 2026\n\nAt our stand, during this year's ONS, we presented a series of exciting talks on providing reliable energy for a world in transition.\n\nWatch recordings of our ONS sessions here\n\nFor our investors and shareholders:\n\nQ2 2026 results\n\nMain page for investors\n\nCMU presentations\n\nWhy invest? | Equity story\n\nUseful links\n\nContact us (all enquiries)\n\nEmergency response\n\nPress and media relations\n\nIR contacts\n\nAnnual reports\n\nSocial media",
+      "links": [
+        "/investors",
+        "/careers",
+        "/sustainability",
+        "/about-us",
+        "/about-us/contact-us",
+        "https://www.facebook.com/Equinor/",
+        "https://www.instagram.com/equinor/",
+        "https://www.linkedin.com/company/equinor/",
+        "https://www.youtube.com/equinor",
+        "/about-us/privacy-policy",
+        "/cookie-policy",
+        "/about-us/accessibility-statement",
+        "/about-us/terms-and-conditions",
+        "/about-us/site-info",
+        "/",
+        "/search",
+        "/no",
+        "/magazine/how-natural-gas-becomes-food-on-the-table",
+        "/energy/energy-security",
+        "/energy/natural-gas",
+        "/about-us/equinor-in-brief",
+        "https://www.equinor.com/no",
+        "/news/20261014-oil-gas-discovery-oseberg",
+        "/news/20261013-eneco-five-year-gas-agreement",
+        "/news/20261009-equinor-and-shell-partner-on-bay-du-nord",
+        "/news",
+        "/news-and-media/subscription",
+        "/about-us/social-media",
+        "/news-and-media/media-relations",
+        "/careers/summer-interns",
+        "/news-and-media/events",
+        "/news-and-media/equinor-and-aker-bp-supplier-day-harstad-2026",
+        "/news-and-media/q3-2026-press-conference",
+        "/investors/q3-2026-analyst-conference",
+        "/about-us/2026-autumn-conference",
+        "/about-us/ons",
+        "/news/equinor-second-quarter-2026-results",
+        "/investors/capital-markets-updates",
+        "/investors/why-invest-in-equinor",
+        "/news-and-media/emergency-preparedness",
+        "/investors/contacts-investor-relations",
+        "/investors/annual-reports"
+      ]
+    },
+    "https://www.equinor.com/about-us": {
+      "kind": "page",
+      "status": 200,
+      "title": "",
+      "text": "Skip to main content\n\nExplore\n\nInvestors Careers Sustainability About us Contact us\n\nConnect\n\nFacebook Instagram LinkedIn Youtube\n\nSite\n\nPrivacy policy Cookie policy Accessibility statement Terms and conditions Site info\n\nCopyright 2026 Equinor ASA\n\nAbout us - Equinor\n\nSearch\n\nEnglish (UK) en\n\nNorwegian no\n\nMenu\n\nPhoto: Einar Aslaksen\n\nHome\n\nAbout us\n\nAbout us\n\nEquinor is an international energy company committed to providing reliable energy in a volatile world.\n\nOur purpose: Energy for people. Progress for society. Searching for better.\n\nWe are headquartered in Norway with around 25,000 employees and offices in more than 20 countries. A major supplier of energy to Europe, with a portfolio that encompasses oil and gas, renewables, and low-carbon solutions. Equinor is a world-leading offshore operator with a growing power business and positions in CO 2 transportation and storage.\n\nOur deliveries of oil, gas, and wind power provide a vital contribution to Europe’s energy security.\n\nThe Norwegian continental shelf is the backbone of the company, while our international oil and gas portfolio is focused on a set of core positions in the US, Brazil, Angola, the UK and Canada.\n\nOur power business is built around onshore and offshore wind, supplemented by solar assets, in countries like Poland, the UK, Brazil and Norway.\n\nWe aim to provide reliable energy for a world in transition, enabling access to secure, affordable and low-emission energy for people and society. Building on a foundation of low-risk positions and 50 years of experience, we are well placed to grow our businesses and create long-term value.\n\nIn Equinor, we believe that collaboration across disciplines, companies, and countries holds the key to providing the reliable energy the world needs.\n\nOur global locations\n\nContact us\n\n24,600\n\nEmployees around the world (2025)\n\n20+ countries\n\nWhere we have offices\n\n9,000\n\nSuppliers working with us\n\n2,137 mboe/day\n\nEquity oil and gas production (2025)\n\n3.67 TWh\n\nRenewable power generation, Equinor share in 2025\n\n106,462 USD million\n\nTotal revenues and other income (2025)\n\nOur global presence\n\nEquinor is an international energy company with a proud history. All of us play a part in its future. Our company was established in 1972 to create value and build industry. Through the decades our people have been inspired by a strong sense of meaning and direction – and today we capture this in our purpose: Energy for people. Progress for society. Searching for better.\n\nAnders Opedal\n\nPresident and Chief Executive Officer. Equinor ASA\n\nOur business\n\nOur portfolio encompasses oil and gas, renewables and low-carbon solutions. We are a major supplier of energy to Europe, a world-leading offshore operator with positions in renewables and low-carbon solutions.\n\nOur business model\n\nOur organisation & management\n\nCorporate governance\n\nGoverning bodies\n\nOur climate ambitions: getting to net zero\n\nOur goal is to supply the energy the world needs today and to develop the energy solutions for tomorrow, while reducing emissions together with society to reach net zero by 2050.\n\nEquinor's transition ambitions\n\nOur climate policies\n\nEnergy transition plan 2025\n\nOur values embody the spirit and energy of Equinor at its best. They help us set direction and they guide our decisions, actions and the way we interact with others. Our values express the ideals we strive to live up to every day.\n\nOur culture, strengths and values\n\nOur approach\n\nRespecting people\n\nOur brand\n\nThrough our brand, we wish to position ourselves as a leading company in the energy transition with the industrial strength to make a difference, driven by purpose, people, innovative thinking and not least — collaboration.\n\nRead more about our brand\n\nOur name\n\nIn May 2018, our Annual General Meeting voted to change our company name from Statoil to Equinor to better reflect our evolution and identity as a company for the generations to come.\n\nOur new name derives from two key ideas: the first part denoting equal, equality, and equilibrium, and the second part signalling a company proud of its Norwegian origins that we will use actively in our positioning.\n\nThe story of a new name\n\nOur history\n\nIn 1972, Statoil was formed by a decision of the Norwegian parliament and owned 100% by the Norwegian State. In 2001, Equinor was listed on the Oslo and New York stock exchanges with a 67% majority stake owned by the Norwegian State. In 2018 we changed our name to Equinor.\n\nMore about our history\n\nUseful links\n\nContact us, all enquiries\n\nSponsorships\n\nQuestions about careers\n\nCareers and open positions\n\nConducting our business\n\nRelating to business partners\n\nWorking with communities and environment\n\nPreventing major accidents",
+      "links": [
+        "/investors",
+        "/careers",
+        "/sustainability",
+        "/about-us",
+        "/about-us/contact-us",
+        "https://www.facebook.com/Equinor/",
+        "https://www.instagram.com/equinor/",
+        "https://www.linkedin.com/company/equinor/",
+        "https://www.youtube.com/equinor",
+        "/about-us/privacy-policy",
+        "/cookie-policy",
+        "/about-us/accessibility-statement",
+        "/about-us/terms-and-conditions",
+        "/about-us/site-info",
+        "/",
+        "/search",
+        "/no/om-oss",
+        "/where-we-are",
+        "/about-us/our-business-model",
+        "/about-us/organisation",
+        "/about-us/corporate-governance",
+        "/about-us/governing-bodies",
+        "/sustainability/energy-transition-plan",
+        "/sustainability/climate-policies",
+        "/careers/our-culture",
+        "/about-us/our-brand",
+        "/magazine/a-new-name",
+        "/about-us/our-history",
+        "/about-us/sponsorships",
+        "/careers/contact"
+      ]
+    }
+  }
+}

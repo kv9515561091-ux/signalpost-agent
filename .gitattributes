@@ -6,6 +6,12 @@
 # Check what any given path will get with: git check-attr eol -- <path>
 * text=auto eol=lf
 
+# Recorded fixtures. json.dumps escapes control characters, so a CR byte
+# in here is real content captured from a response body -- a page with a
+# carriage return in its text -- not a line-ending artefact. Normalising
+# it would corrupt the recording.
+tests/fixtures/*.json -text
+
 # Generated or binary content must never be line-ending normalised.
 *.png binary
 *.jpg binary
