@@ -225,10 +225,29 @@ def _force_utf8_output() -> None:
 for stream in (sys.stdout, sys.stderr):
         reconfigure = getattr(stream, "reconfigure", None)
         if reconfigure is not None:
-                # A detached or already-closed stream cannot be
-                # reconfigured, and that must not stop the agent running.
-                with contextlib.suppress(ValueError, OSError):
-                    reconfigure(encoding="utf-8", errors="replace")
+            # A detached or already-closed stream cannot be
+            # reconfigured, and that must not stop the agent running.
+            with contextlib.suppress(ValueError, OSError):
+                reconfigure(encoding="utf-8", errors="replace")
+
+
+def _enable_streaming_output() -> None:
+    """Line-buffer stdout so progress is visible when redirected.
+
+    Python block-buffers stdout whenever it is not a terminal, so a
+    redirected run writes nothing at all until it exits. A fifty-company
+    enriched batch takes minutes, and reporting progress per company is
+    the entire point of the progress callback -- which is invisible
+    without this.
+
+    Reconfiguring resets the encoding, so it is reapplied here.
+    """
+    reconfigure = getattr(sys.stdout, "reconfigure", None)
+    if reconfigure is None:  # pragma: no cover - present in CPython
+        return
+
+    with contextlib.suppress(ValueError, OSError):
+        reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
 
 
 def _check_setup() -> int:
@@ -428,6 +447,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     _force_utf8_output()
+    _enable_streaming_output()
 
     parser = build_parser()
     args = parser.parse_args(argv)

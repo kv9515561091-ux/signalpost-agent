@@ -154,6 +154,80 @@ class ParityTests(unittest.TestCase):
         )
 
 
+class StreamingOutputTests(unittest.TestCase):
+    """Progress must be visible when stdout is redirected.
+
+    Python block-buffers stdout when it is not a terminal, so a
+    redirected batch wrote nothing at all until it finished. A
+    fifty-company enriched run takes minutes, and the per-company
+    progress line is the whole point -- it was invisible.
+    """
+
+    def test_single_cli_enables_line_buffering(self):
+        import sys
+
+        from src import __main__ as cli
+
+        calls = {}
+
+        class FakeStream:
+            def reconfigure(self, **kwargs):
+                calls.update(kwargs)
+
+        with patch.object(sys, "stdout", FakeStream()):
+            cli._enable_streaming_output()
+
+        self.assertTrue(calls.get("line_buffering"))
+
+    def test_line_buffering_keeps_utf8(self):
+        # Reconfiguring resets the encoding, so the Norwegian text that
+        # _force_utf8_output() guarantees has to be reapplied.
+        import sys
+
+        from src import __main__ as cli
+
+        calls = {}
+
+        class FakeStream:
+            def reconfigure(self, **kwargs):
+                calls.update(kwargs)
+
+        with patch.object(sys, "stdout", FakeStream()):
+            cli._enable_streaming_output()
+
+        self.assertEqual(calls.get("encoding"), "utf-8")
+
+    def test_a_stream_without_reconfigure_does_not_raise(self):
+        import sys
+
+        from src import __main__ as cli
+
+        class OldStream:
+            pass
+
+        with patch.object(sys, "stdout", OldStream()):
+            cli._enable_streaming_output()  # must not raise
+
+    def test_batch_cli_enables_line_buffering(self):
+        import sys
+
+        from src import batch_cli
+
+        calls = {}
+
+        class FakeStream:
+            def reconfigure(self, **kwargs):
+                calls.update(kwargs)
+
+        with patch.object(sys, "stdout", FakeStream()), patch.object(
+            batch_cli, "build_parser"
+        ) as parser, self.assertRaises(SystemExit):
+            parser.return_value.parse_args.side_effect = SystemExit(0)
+            batch_cli.main([])
+
+        self.assertTrue(calls.get("line_buffering"))
+
+
 class ArgumentTests(unittest.TestCase):
     def test_missing_number_is_an_error_not_a_traceback(self):
         with self.assertRaises(SystemExit) as ctx:

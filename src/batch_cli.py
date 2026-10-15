@@ -9,6 +9,8 @@ shim that preserves the documented ``python run_batch.py`` invocation.
 from __future__ import annotations
 
 import argparse
+import contextlib
+import sys
 
 from src.agent import (
     DEFAULT_MAX_CRAWL_LINKS,
@@ -119,6 +121,15 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Python block-buffers stdout when it is not a terminal, so a
+    # redirected batch writes nothing until it exits. Fifty enriched
+    # companies take minutes, and the per-company progress line is
+    # useless if it only appears at the end.
+    reconfigure = getattr(sys.stdout, "reconfigure", None)
+    if reconfigure is not None:
+        with contextlib.suppress(ValueError, OSError):
+            reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
+
     args = build_parser().parse_args(argv)
 
     company_numbers = load_company_numbers(args.input)
