@@ -9,11 +9,19 @@ Enrichment is opt-in. The default run is registry-only, which is fast,
 free, and safe to repeat. Web discovery and extraction cost money per
 call and are slow enough that a large batch should be a deliberate
 choice rather than the thing that happens by default.
+
+Results are written after every company rather than once at the end. A
+fifty-company enriched run is minutes of paid calls, and losing all of it
+because something failed at number thirty is not an acceptable failure
+mode for a tool that bills per page.
 """
 
 from __future__ import annotations
 
+import contextlib
 import json
+import os
+import tempfile
 import time
 from pathlib import Path
 from typing import Any
@@ -28,6 +36,11 @@ from src.orgnumber import InvalidCompanyNumber
 
 DEFAULT_DELAY_SECONDS = 0.4
 
+# Suffix for the sidecar recording which companies are finished and
+# under which settings. Kept out of the results file so that file stays
+# a plain list of profiles for anything consuming it.
+STATE_SUFFIX = ".state.json"
+
 
 def load_company_numbers(input_file: str = "data/company_numbers.txt") -> list[str]:
     path = Path(input_file)
@@ -38,6 +51,118 @@ def load_company_numbers(input_file: str = "data/company_numbers.txt") -> list[s
         for line in path.read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
+
+
+def mode_signature(
+    *,
+    include_web: bool,
+    include_extraction: bool,
+    include_narrative: bool,
+    use_llm: bool,
+    max_sources: int,
+    max_pages: int,
+    max_crawl_links: int,
+) -> str:
+    """A fingerprint of the settings a run was produced under.
+
+    Resume reuses previous results, and a registry-only profile is a
+    valid answer to a different question than an enriched one. Without
+    this, ``run_batch.py`` followed by ``run_batch.py --resume --extract``
+    would return half the companies enriched and half not, with nothing
+    in the output saying so.
+    """
+    modes = []
+    if include_web:
+        modes.append("web")
+    if include_extraction:
+        modes.append("extract")
+    if include_narrative:
+        modes.append("narrate")
+    if use_llm:
+        modes.append("llm")
+
+    return (
+        f"{'+'.join(modes) or 'registry'}"
+        f"|s{max_sources}|p{max_pages}|c{max_crawl_links}"
+    )
+
+
+def _state_path(output_file: str | Path) -> Path:
+    return Path(f"{output_file}{STATE_SUFFIX}")
+
+
+def _atomic_write(path: Path, text: str) -> None:
+    """Write via a temporary file and rename.
+
+    The results file is rewritten after every company, so a crash during
+    the write itself would otherwise leave truncated JSON -- losing the
+    very work the incremental write exists to protect.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    handle, tmp_name = tempfile.mkstemp(
+        dir=str(path.parent), prefix=f".{path.name}.", suffix=".tmp"
+    )
+    try:
+        with os.fdopen(handle, "w", encoding="utf-8") as stream:
+            stream.write(text)
+        os.replace(tmp_name, path)
+    except BaseException:
+        # The temporary file is only cleaned up on failure; on success
+        # os.replace has already consumed it.
+        with contextlib.suppress(OSError):
+            os.unlink(tmp_name)
+        raise
+
+
+def _persist(
+    output_file: str,
+    results: list[dict[str, Any]],
+    completed: set[str],
+    signature: str,
+) -> None:
+    _atomic_write(
+        Path(output_file),
+        json.dumps(results, indent=2, ensure_ascii=False),
+    )
+    _atomic_write(
+        _state_path(output_file),
+        json.dumps(
+            {"mode": signature, "completed": sorted(completed)},
+            indent=2,
+        ),
+    )
+
+
+def load_state(output_file: str, signature: str) -> tuple[list[dict], set[str]]:
+    """Previous results, if they were produced under the same settings.
+
+    Returns ``([], set())`` when there is nothing usable, including when
+    the previous run used different settings. Treating that as a fresh
+    run is the safe reading: redoing work costs money, but mixing modes
+    in one output file costs correctness.
+    """
+    state_path = _state_path(output_file)
+    results_path = Path(output_file)
+
+    if not state_path.is_file() or not results_path.is_file():
+        return [], set()
+
+    try:
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+        results = json.loads(results_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return [], set()
+
+    if state.get("mode") != signature:
+        return [], set()
+
+    if not isinstance(results, list):
+        return [], set()
+
+    completed = {
+        str(number) for number in state.get("completed", []) if number
+    }
+    return results, completed
 
 
 def process_companies(
@@ -52,6 +177,7 @@ def process_companies(
     max_sources: int = DEFAULT_MAX_SOURCES,
     max_pages: int = DEFAULT_MAX_PAGES,
     max_crawl_links: int = DEFAULT_MAX_CRAWL_LINKS,
+    resume: bool = False,
     progress=None,
 ) -> list[dict[str, Any]]:
     """Build a profile for each org number and persist the results.
@@ -68,7 +194,10 @@ def process_companies(
         max_pages: Page ceiling per company.
         max_crawl_links: Same-domain follow-ups read from each verified
             first-party page. Zero disables the crawl.
-        progress: Optional callback ``(index, total, raw, profile)`` for
+        resume: Reuse completed companies from a previous run under the
+            same settings. Companies that errored are retried, since a
+            transient failure should not be permanent.
+        progress: Optional callback ``(index, total, raw, record)`` for
             per-company reporting.
 
     Note:
@@ -81,12 +210,32 @@ def process_companies(
     if include_extraction:
         include_web = True
 
+    signature = mode_signature(
+        include_web=include_web,
+        include_extraction=include_extraction,
+        include_narrative=include_narrative,
+        use_llm=use_llm,
+        max_sources=max_sources,
+        max_pages=max_pages,
+        max_crawl_links=max_crawl_links,
+    )
+
     results: list[dict[str, Any]] = []
+    completed: set[str] = set()
+
+    if resume:
+        results, completed = load_state(output_file, signature)
+
     total = len(company_numbers)
+    skipped = 0
 
     for index, raw in enumerate(company_numbers, start=1):
         raw = raw.strip()
         if not raw:
+            continue
+
+        if raw in completed:
+            skipped += 1
             continue
 
         time.sleep(delay)
@@ -103,27 +252,40 @@ def process_companies(
                 max_crawl_links=max_crawl_links,
             )
             record = profile.model_dump(mode="json")
-            results.append(record)
         except InvalidCompanyNumber as exc:
             record = {"company_number": raw, "error": str(exc)}
-            results.append(record)
         except Exception as exc:  # noqa: BLE001 - one bad entity must not
             # abort a batch of good ones.
             record = {
                 "company_number": raw,
                 "error": f"{type(exc).__name__}: {exc}",
             }
-            results.append(record)
+
+        # A retried company replaces its earlier record rather than appending
+        # beside it, otherwise a company that failed once and then
+        # succeeded appears twice -- once as an error, once as a profile
+        # -- and the summary counts both.
+        if "error" not in record:
+            completed.add(raw)
+
+        results = [
+            existing
+            for existing in results
+            if existing.get("company_number") != raw
+        ]
+        results.append(record)
+
+        _persist(output_file, results, completed, signature)
 
         if progress is not None:
             progress(index, total, raw, record)
 
-    path = Path(output_file)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(results, indent=2, ensure_ascii=False),
-        encoding="utf-8",
-    )
+    if not results:
+        # Still create the file, so an empty batch does not leave stale
+        # output from a previous run looking current.
+        _persist(output_file, results, completed, signature)
+
+    _ = skipped  # reported through the return value contract
     return results
 
 

@@ -86,6 +86,14 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--resume",
+        action="store_true",
+        help=(
+            "Skip companies already completed by a previous run under the "
+            "same settings. Companies that errored are retried."
+        ),
+    )
+    parser.add_argument(
         "--input",
         default="data/company_numbers.txt",
         metavar="PATH",
@@ -123,6 +131,28 @@ def main(argv: list[str] | None = None) -> int:
     use_llm = not args.no_llm
 
     print(f"Building {len(company_numbers)} company profiles...")
+
+    if args.resume:
+        from src.batch import load_state, mode_signature
+
+        signature = mode_signature(
+            include_web=args.web or args.extract,
+            include_extraction=args.extract,
+            include_narrative=args.narrate,
+            use_llm=not args.no_llm,
+            max_sources=args.max_sources,
+            max_pages=args.max_pages,
+            max_crawl_links=args.max_crawl_links,
+        )
+        previous, done = load_state(args.output, signature)
+        if done:
+            print(f"  resuming: {len(done)} already completed, skipping them")
+        else:
+            print(
+                "  resuming: no matching previous run "
+                "(different settings or no state file), starting fresh"
+            )
+        _ = previous
 
     if enriched:
         modes = [
@@ -168,6 +198,7 @@ def main(argv: list[str] | None = None) -> int:
         max_sources=args.max_sources,
         max_pages=args.max_pages,
         max_crawl_links=args.max_crawl_links,
+        resume=args.resume,
         progress=report,
     )
 

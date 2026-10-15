@@ -127,7 +127,7 @@ class ParityTests(unittest.TestCase):
 
         self.assertEqual(
             self._flags(run_batch.build_parser()) - self._flags(single()),
-            {"--input", "--output", "--delay"},
+            {"--input", "--output", "--delay", "--resume"},
         )
 
     def test_single_only_flags_are_deliberate(self):

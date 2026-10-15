@@ -38,9 +38,10 @@ python run_batch.py
 python run_batch.py --web --extract --narrate
 python run_batch.py --extract --max-sources 4 --max-pages 6
 python run_batch.py --no-llm                       # deterministic, free
+python run_batch.py --resume                       # continue an interrupted run
 python -m src.agent 989061593 --extract --max-crawl-links 0   # no crawl
 
-python -m unittest discover -s tests               # 369 tests
+python -m unittest discover -s tests               # 440 tests
 ruff check .                                         # lint
 mypy                                                 # types (advisory)
 ```
@@ -269,6 +270,26 @@ words across 10, because pronouns carry the sentence while the actual
 signal — "children" — is one word. Tuning the threshold down to catch it
 then put "our founder's wife Anna led the charity" at 1 word in 10.
 
+### 5c. Every redirect hop is re-checked
+
+Discovered URLs come from a search index, so they are attacker-influenced.
+The guard answers "may the agent open a connection to this host?" — and
+it must be asked again at every hop, not only for the URL supplied.
+
+Delegating redirects to the HTTP library meant it was asked once. A
+discovered `https://company.example` that 302s to
+`http://169.254.169.254/latest/meta-data/` passed the check and reached
+cloud instance metadata anyway. Validating the URL the agent decided to
+check is worthless when the request it never made is the one that goes
+out.
+
+Redirects are now followed by hand, capped at five hops, with every hop
+validated. The scheme is also checked *before* any coercion — prepending
+`https://` first turned `file:///etc/passwd` into
+`https://file:///etc/passwd`, which then parsed as scheme https and
+passed. That check was unreachable code; the old test only caught it
+because the mangled host happened not to resolve.
+
 ### 6. Conflicts are preserved, not resolved by convenience
 
 When sources disagree the registry wins — but the losing value is kept and
@@ -332,7 +353,9 @@ src/
   conflicts.py     disagreement detection and reconciliation
   freshness.py     as_of / reporting-period semantics
   evidence.py      Evidence and FactRecord models
-  http.py          retrying fetch, streamed size-capped bodies
+  http.py          retrying fetch, streamed size-capped bodies, safe redirects
+  netguard.py      shared URL safety guard (private addresses, schemes, redirects)
+  config.py        .env discovery that works from an installed location
   cache.py         TTL disk cache with honest stale handling
   ratelimit.py     per-process request pacing
   text.py          Norwegian-aware text folding
@@ -342,7 +365,8 @@ src/
   request_tracker.py  outbound request budget
   __main__.py      single-company CLI (`signalpost`)
 run_batch.py       shim preserving `python run_batch.py`
-tests/             369 tests, no network required
+tests/             440 tests, no network required
+tools/              record_fixture.py regenerates the end-to-end recording
 ```
 
 `pyproject.toml` is the single source of truth for metadata,
@@ -353,16 +377,47 @@ anywhere without being invoked from the repository root.
 `requirements.txt` pins the runtime for CI. It exists because CI should
 test one known dependency set, not whatever a resolver picks today.
 
+### Batch resume
+
+Results are written **after every company**, through a temporary file and
+an atomic rename, rather than once at the end. A fifty-company enriched
+run is minutes of billable calls, and anything that ended it early — an
+exception, a closed laptop, a rate limit — used to discard every profile
+already finished.
+
+`--resume` skips companies a previous run completed. Companies that
+errored are retried, because a transient network failure should not
+become permanent, and a retried company *replaces* its earlier record
+rather than appearing twice.
+
+Resume refuses to reuse results written under different settings:
+
+```
+$ python run_batch.py --resume                 # registry-only output exists
+  resuming: 10 already completed, skipping them
+  requests        0/2000
+
+$ python run_batch.py --resume --extract
+  resuming: no matching previous run (different settings or no state
+  file), starting fresh
+```
+
+That refusal is the point. A registry-only profile is a valid answer to
+a different question than an enriched one, and silently blending the two
+into one output file is worse than redoing paid work. Progress lives in
+`company_profiles.json.state.json`, so the results file stays a plain
+list for anything consuming it.
+
 Tests run on the standard library alone — `python -m unittest discover -s
 tests`. There is no development dependency to install. `pytest` also runs
 them unchanged if you prefer it.
 
 CI runs `ruff` as a gate and `mypy` as a report. mypy is advisory on
-purpose: the project shipped 369 tests and no type checking at all, and
+purpose: the project shipped hundreds of tests and no type checking at all, and
 its first pass found nine issues — one of them a live bug, where the
 crawl gate compared an optional domain against a string and silently
 disabled the crawl for any company without a registered website. It now
-passes on all 26 source files. Making it a gate is a deliberate,
+passes on all 28 source files. Making it a gate is a deliberate,
 incremental change rather than something to flip on in the same commit
 that introduces it.
 
