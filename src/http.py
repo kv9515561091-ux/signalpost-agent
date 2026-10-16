@@ -16,6 +16,7 @@ from urllib.parse import urljoin
 
 import requests
 
+from src.hostreputation import reputation
 from src.netguard import (
     DEFAULT_MAX_REDIRECTS,
     TooManyRedirects,
@@ -34,6 +35,10 @@ class NotFound(Exception):
     """The endpoint responded, but has no record for this key."""
 
 
+class HostRefused(Exception):
+    """This host has refused us enough times to stop asking."""
+
+
 def get_following_redirects(
     url: str,
     *,
@@ -42,6 +47,7 @@ def get_following_redirects(
     headers: dict[str, str] | None = None,
     stream: bool = False,
     validate: bool = True,
+    track_reputation: bool | None = None,
 ):
     """GET ``url``, validating every redirect hop.
 
@@ -56,15 +62,31 @@ def get_following_redirects(
         validate: When ``False`` the address guard is skipped. Only the
             registry sets this, for a fixed set of Brreg endpoints that
             cannot be pointed anywhere by a search result.
+        track_reputation: Defaults to following ``validate``. Reputation
+            tracks hosts we have no prior relationship with, so a fixed
+            Brreg endpoint is never worth a strike -- it is either
+            always available or genuinely broken, and neither is
+            something a strike count improves.
 
     Raises:
         UnsafeUrl: Any hop resolves to a private address or is malformed.
         TooManyRedirects: The chain exceeded ``max_redirects``.
+        HostRefused: The host has refused automated access often enough
+            that asking again is known to be wasted.
     """
+    if track_reputation is None:
+        track_reputation = validate
+
     current = validate_url(url) if validate else url
     remaining = max_redirects
 
     while True:
+        if track_reputation and reputation.should_skip(current):
+            raise HostRefused(
+                f"{reputation.host_of(current)} refuses automated access; "
+                "not requesting again in this run"
+            )
+
         response = requests.get(
             current,
             timeout=timeout,
@@ -73,6 +95,11 @@ def get_following_redirects(
             # Handled here, so the library must not also follow them.
             allow_redirects=False,
         )
+
+        if track_reputation:
+            # Recorded before the redirect branch, so a refusal on any
+            # hop is remembered against the host that served it.
+            reputation.record(current, response.status_code)
 
         if response.status_code in (301, 302, 303, 307, 308):
             location = redirect_target(response, max_redirects=remaining)

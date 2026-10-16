@@ -593,6 +593,7 @@ def _apply_extraction(
     """
     from src.crawl import plan_crawl
     from src.extract import extract_from_page
+    from src.http import HostRefused
     from src.page import UnsafeUrl, fetch_page
 
     candidates = [
@@ -634,6 +635,13 @@ def _apply_extraction(
         except UnsafeUrl as exc:
             profile.retrieval_errors.append(
                 f"page {source.domain}: blocked ({exc})"
+            )
+            continue
+        except HostRefused as exc:
+            # Recorded, not hidden: a skipped source is a gap in coverage
+            # and the profile should say where the gap came from.
+            profile.retrieval_errors.append(
+                f"page {source.domain}: not requested ({exc})"
             )
             continue
         except Exception as exc:  # noqa: BLE001
