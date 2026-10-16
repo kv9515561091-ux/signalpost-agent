@@ -33,6 +33,7 @@ from src.agent import (
     build_profile,
 )
 from src.budget import REGISTRY_REQUESTS_PER_COMPANY, RequestBudget
+from src.changes import diff_profiles, summarise_changes
 from src.orgnumber import InvalidCompanyNumber
 from src.request_tracker import request_tracker
 
@@ -171,6 +172,40 @@ def load_state(output_file: str, signature: str) -> tuple[list[dict], set[str]]:
     return results, completed
 
 
+def _load_history(
+    output_file: str, signature: str
+) -> dict[str, dict[str, Any]]:
+    """Stored profiles from an earlier run, keyed by org number.
+
+    Read directly rather than through :func:`load_state`, which is about
+    deciding what to skip. A run with no ``--resume`` still needs to know
+    what it published last time.
+
+    A history written under different settings is still useful -- a
+    registry field does not stop being a change because enrichment
+    levels differ -- so the mode check is deliberately not applied here.
+    """
+    path = Path(output_file)
+
+    if not path.is_file():
+        return {}
+
+    try:
+        records = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+    if not isinstance(records, list):
+        return {}
+
+    _ = signature
+    return {
+        str(record.get("company_number")): record
+        for record in records
+        if isinstance(record, dict) and record.get("company_number")
+    }
+
+
 def process_companies(
     company_numbers: list[str],
     output_file: str = "data/company_profiles.json",
@@ -231,6 +266,13 @@ def process_companies(
 
     if resume:
         results, completed = load_state(output_file, signature)
+
+    # History is loaded whether or not --resume was asked for. --resume
+    # decides whether to *skip* companies that are already done; it has
+    # no bearing on whether a fresh run knows what it looked like last
+    # time. Loading only under --resume meant an ordinary re-run
+    # overwrote the very history that makes change detection possible.
+    previous = _load_history(output_file, signature)
 
     total = len(company_numbers)
     skipped = 0
@@ -296,6 +338,12 @@ def process_companies(
                 "company_number": raw,
                 "error": f"{type(exc).__name__}: {exc}",
             }
+
+        # Compared against whatever the last run stored for this company,
+        # before the new record replaces it. Done for failures too, so a
+        # company that stops erroring is reported as recovered.
+        record["changes"] = diff_profiles(previous.get(raw), record)
+        record["changes_summary"] = summarise_changes(record["changes"])
 
         # A retried company replaces its earlier record rather than appending
         # beside it, otherwise a company that failed once and then
