@@ -20,10 +20,14 @@ thing that gets cut.
 
 from __future__ import annotations
 
-import os
+from src.request_tracker import default_limit
 
-# Environment override for the competition's stated daily ceiling.
-DEFAULT_LIMIT = int(os.getenv("AGENT_REQUEST_LIMIT", "2000"))
+# Read from the tracker rather than from the environment separately.
+# Two readers of the same variable is how they come to disagree: the
+# budget captured its value at import time while the tracker read it
+# later, so a changed limit left the two holding different numbers and
+# each believing it was authoritative.
+DEFAULT_LIMIT = default_limit()
 
 # The registry spine: company record, roles, annual accounts. Free,
 # unauthenticated, and the backbone of every profile, so it is the last
@@ -34,8 +38,11 @@ REGISTRY_REQUESTS_PER_COMPANY = 3
 class RequestBudget:
     """A ceiling on outbound work, with graceful degradation."""
 
-    def __init__(self, limit: int = DEFAULT_LIMIT, *, protected: int = 0):
-        self.limit = limit
+    def __init__(self, limit: int | None = None, *, protected: int = 0):
+        # None means "ask the tracker", so there is exactly one place the
+        # ceiling is decided. A default baked in here would be a second
+        # number to keep in step with the one that actually counts.
+        self.limit = limit if limit is not None else default_limit()
         self.used = 0
         # Requests the registry spine needs regardless: three per
         # company, free and unauthenticated.
