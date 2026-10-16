@@ -197,5 +197,99 @@ class SummaryTests(unittest.TestCase):
         self.assertTrue(budget.summary()["enrichment_disabled_for_budget"])
 
 
+class ReserveCeilingTests(unittest.TestCase):
+    """A reserve larger than the budget protects nothing.
+
+    The bug: reserving three requests per company for a thousand
+    companies asks for three thousand against a two-thousand ceiling, so
+    ``registry_only()`` was true from the first company. A run then
+    produced three hundred and forty-three registry-only profiles, none
+    carrying a fact, with nothing in the output indicating enrichment had
+    been requested at all.
+    """
+
+    @staticmethod
+    def _reserve_for(total: int, ceiling: int) -> int:
+        return min(
+            REGISTRY_REQUESTS_PER_COMPANY * total,
+            max(0, ceiling - REGISTRY_REQUESTS_PER_COMPANY),
+        )
+
+    def test_reserve_never_exceeds_the_ceiling(self):
+        for total in (10, 100, 1000, 10000):
+            reserve = self._reserve_for(total, 2000)
+            self.assertLessEqual(
+                reserve,
+                2000,
+                f"{total} companies produced a reserve above the ceiling",
+            )
+
+    def test_enrichment_is_not_disabled_at_the_start_of_a_big_run(self):
+        reserve = self._reserve_for(1000, 2000)
+        budget = RequestBudget(2000, protected=reserve)
+        self.assertFalse(
+            budget.registry_only(),
+            "a 1000-company run must not begin with enrichment already off",
+        )
+
+    def test_a_run_larger_than_the_budget_still_enriches(self):
+        # Deeper than the ceiling, but degradation must be gradual.
+        reserve = self._reserve_for(1000, 2000)
+        budget = RequestBudget(2000, protected=reserve)
+        self.assertGreaterEqual(budget.pages_allowed(14, 17, 1000), 1)
+
+    def test_small_run_reserves_the_whole_registry(self):
+        # For a hundred companies the full reserve fits comfortably.
+        reserve = self._reserve_for(100, 2000)
+        self.assertEqual(reserve, REGISTRY_REQUESTS_PER_COMPANY * 100)
+
+
+class SkippedEnrichmentTests(unittest.TestCase):
+    """Asking for enrichment and not getting it must be visible."""
+
+    def test_a_skipped_company_says_so(self):
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+
+        from src import batch
+        from src.request_tracker import RequestTracker
+
+        class FakeProfile:
+            def model_dump(self, mode="json"):
+                return {
+                    "company_number": "123456789",
+                    "company_name": "X AS",
+                    "facts": [],
+                    "explanation": None,
+                    "retrieval_errors": [],
+                }
+
+        with tempfile.TemporaryDirectory() as tmp:
+            out = str(Path(tmp) / "o.json")
+
+            # A budget with nothing left.
+            tracker = RequestTracker(2000)
+            tracker.count = 2000
+
+            with patch.object(batch, "build_profile", lambda raw, **kw: FakeProfile()), \
+                 patch.object(batch, "request_tracker", tracker), \
+                 patch.object(batch.time, "sleep", lambda s: None):
+                results = batch.process_companies(
+                    ["123456789"],
+                    output_file=out,
+                    delay=0,
+                    include_extraction=True,
+                )
+
+            record = results[0]
+            self.assertIn(
+                "enrichment skipped",
+                " ".join(record.get("retrieval_errors") or []),
+                "a profile with enrichment silently dropped must say so",
+            )
+            self.assertEqual(record.get("facts"), [])
+
+
 if __name__ == "__main__":
     unittest.main()

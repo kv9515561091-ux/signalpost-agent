@@ -280,9 +280,23 @@ def process_companies(
     # Smoothing the remaining budget across the companies still to do is
     # what turns "the run died at company 80" into "the last twenty got
     # shallower but every one of them finished".
+    #
+    # The reserve is capped by the ceiling. Reserving three requests per
+    # company for a thousand companies asks for three thousand, which is
+    # more than the daily limit, and the result was that enrichment was
+    # switched off from the very first company -- three hundred and
+    # forty-three registry-only profiles produced, none of them carrying
+    # a fact, and nothing in the output said enrichment had been
+    # requested. A reserve larger than the budget cannot protect
+    # anything.
+    ceiling = request_tracker.limit
+    reserve = min(
+        REGISTRY_REQUESTS_PER_COMPANY * total,
+        max(0, ceiling - REGISTRY_REQUESTS_PER_COMPANY),
+    )
     run_budget = RequestBudget.from_tracker(
         request_tracker,
-        protected=REGISTRY_REQUESTS_PER_COMPANY * total,
+        protected=reserve,
     )
     pending = [n.strip() for n in company_numbers if n.strip()]
     pending = [n for n in pending if n not in completed]
@@ -351,6 +365,22 @@ def process_companies(
         # -- and the summary counts both.
         if "error" not in record:
             completed.add(raw)
+
+        if (
+            not enrichment_allowed
+            and include_extraction
+            and "error" not in record
+        ):
+            # Enrichment was asked for and not delivered. That is a
+            # materially different profile from one that was simply
+            # requested and completed, and a caller reading the output
+            # needs to be able to tell the two apart -- a run can
+            # otherwise produce hundreds of registry-only profiles
+            # while looking entirely healthy.
+            record.setdefault("retrieval_errors", []).append(
+                "enrichment skipped: the outbound request budget was "
+                "insufficient for this company"
+            )
 
         results = [
             existing

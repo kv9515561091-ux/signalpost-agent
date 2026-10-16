@@ -38,7 +38,15 @@ def collect(*, wanted: int, max_pages: int, size: int) -> list[str]:
 
     for page in range(max_pages):
         url = f"{LIST_URL}?size={size}&page={page}"
-        data = fetch_json(url, validate=False)
+
+        # Enhetsregisteret caps the result window, so a deep page comes
+        # back 400 rather than empty. Stopping there is correct; letting
+        # it raise would discard every company already collected.
+        try:
+            data = fetch_json(url, validate=False)
+        except Exception as exc:  # noqa: BLE001 - end of the window
+            print(f"  pagination stopped at page {page}: {type(exc).__name__}")
+            break
 
         entities = (data or {}).get("_embedded", {}).get("enheter", [])
         if not entities:
