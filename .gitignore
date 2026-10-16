@@ -3,6 +3,7 @@
 __pycache__/
 *.pyc
 data/*.json
+data/competition_profiles.json
 data/cache/
 data/*.log
 data/*.err
