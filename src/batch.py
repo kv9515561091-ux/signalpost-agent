@@ -32,7 +32,9 @@ from src.agent import (
     DEFAULT_MAX_SOURCES,
     build_profile,
 )
+from src.budget import REGISTRY_REQUESTS_PER_COMPANY, RequestBudget
 from src.orgnumber import InvalidCompanyNumber
+from src.request_tracker import request_tracker
 
 DEFAULT_DELAY_SECONDS = 0.4
 
@@ -40,6 +42,10 @@ DEFAULT_DELAY_SECONDS = 0.4
 # under which settings. Kept out of the results file so that file stays
 # a plain list of profiles for anything consuming it.
 STATE_SUFFIX = ".state.json"
+
+# Measured: a fully enriched company costs about 17 requests. Used as the
+# divisor when smoothing what is left across the companies still to do.
+PER_COMPANY_ENRICHMENT_COST = 17
 
 
 def load_company_numbers(input_file: str = "data/company_numbers.txt") -> list[str]:
@@ -229,6 +235,19 @@ def process_companies(
     total = len(company_numbers)
     skipped = 0
 
+    # Smoothing the remaining budget across the companies still to do is
+    # what turns "the run died at company 80" into "the last twenty got
+    # shallower but every one of them finished".
+    run_budget = RequestBudget.from_tracker(
+        request_tracker,
+        protected=REGISTRY_REQUESTS_PER_COMPANY * total,
+    )
+    pending = [n.strip() for n in company_numbers if n.strip()]
+    pending = [n for n in pending if n not in completed]
+    # Walks down as each company is finished, so the divisor is the real
+    # number of companies still owed a profile.
+    companies_left = len(pending)
+
     for index, raw in enumerate(company_numbers, start=1):
         raw = raw.strip()
         if not raw:
@@ -240,15 +259,32 @@ def process_companies(
 
         time.sleep(delay)
 
+        # The tracker is the authority on what has been spent; the budget
+        # re-reads it rather than counting separately, so the two cannot
+        # drift. Reservations carry over, or every company would be
+        # promised the same remaining slice.
+        run_budget.sync(request_tracker)
+
+        # Depth for this company is whatever the budget can fairly
+        # afford, and enrichment stops entirely once only the registry
+        # reserve remains.
+        enrichment_allowed = not run_budget.registry_only()
+        affordable = run_budget.pages_allowed(
+            max_pages, PER_COMPANY_ENRICHMENT_COST, max(1, companies_left)
+        )
+        # Promised is spent. Debiting here is what stops the tail of the
+        # run from being granted the same remainder as the head.
+        run_budget.commit(affordable)
+
         try:
             profile = build_profile(
                 raw,
-                include_web=include_web,
-                include_extraction=include_extraction,
-                include_narrative=include_narrative,
+                include_web=include_web and enrichment_allowed,
+                include_extraction=include_extraction and enrichment_allowed,
+                include_narrative=include_narrative and enrichment_allowed,
                 use_llm=use_llm,
                 max_sources=max_sources,
-                max_pages=max_pages,
+                max_pages=affordable,
                 max_crawl_links=max_crawl_links,
             )
             record = profile.model_dump(mode="json")
@@ -274,6 +310,8 @@ def process_companies(
             if existing.get("company_number") != raw
         ]
         results.append(record)
+
+        companies_left = max(0, companies_left - 1)
 
         _persist(output_file, results, completed, signature)
 
