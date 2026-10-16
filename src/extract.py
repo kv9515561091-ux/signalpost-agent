@@ -383,6 +383,13 @@ class ExtractionReport:
     rejected: list[dict[str, Any]] = dataclass_field(default_factory=list)
     llm_used: bool = False
     error: str | None = None
+    # Whether a second, breadth-seeking attempt was made, and what the
+    # first one refused. Recorded so the extra model call is visible
+    # rather than invisible cost.
+    retried_for_breadth: bool = False
+    retried_rejections: list[dict[str, Any]] = dataclass_field(
+        default_factory=list
+    )
 
     @property
     def verified_count(self) -> int:
@@ -568,31 +575,135 @@ def extract_from_page(
         header += f"\nPage title: {title}"
     header += f"\nURL: {source_url}\n\n--- PAGE CONTENT ---\n{page_text}"
 
-    try:
-        result = llm.complete_json(
-            EXTRACTION_SCHEMA,
-            system=SYSTEM_PROMPT,
-            user=header,
-        )
-    except llm.LLMUnavailable as exc:
-        report.error = str(exc)
-        return report
-    except llm.LLMRefused as exc:
-        report.error = f"model refused: {exc}"
-        return report
-    except llm.LLMTruncated as exc:
-        report.error = f"response truncated: {exc}"
-        return report
-    except llm.LLMCallFailed as exc:
-        report.error = str(exc)
+    result = _call_model(header)
+    if result is None:
+        report.error = _last_error or "extraction failed"
         return report
 
     report.llm_used = True
+    _verify_result(
+        result,
+        report,
+        seen_facts,
+        page_text=page_text,
+        source_url=source_url,
+        retrieved_at=retrieved_at,
+        tier=tier,
+        source_type=source_type,
+        company_number=company_number,
+        registry_values=registry_values,
+    )
 
+    # One retry, and only for the failure that looked like an empty page
+    # but might not have been: every proposal refused as a registry
+    # restatement. Costs a model call, not a request.
+    if not report.facts and _restatements_only(report.rejected):
+        second = _call_model(header + _BREADTH_HINT)
+        if second is not None:
+            # A second attempt at an already-declined page has to be
+            # allowed to succeed at the same claims, so the refusals from
+            # the first pass are dropped rather than carried forward --
+            # otherwise every useful fact is refused a second time as a
+            # duplicate of something nothing published.
+            first_pass_rejections = report.rejected
+            report.rejected = []
+            report.facts = []
+            _verify_result(
+                second,
+                report,
+                seen_facts,
+                page_text=page_text,
+                source_url=source_url,
+                retrieved_at=retrieved_at,
+                tier=tier,
+                source_type=source_type,
+                company_number=company_number,
+                registry_values=registry_values,
+            )
+            report.retried_for_breadth = True
+            report.retried_rejections = first_pass_rejections
+
+    return report
+
+
+# Asked when a first pass produced nothing but registry restatements.
+#
+# The measured failure: sixteen of the twenty companies that yielded no
+# facts at all had every proposal refused for "repeats a value already
+# sourced from the registry". For a single-product company whose website
+# says essentially what Brreg says, that refusal is usually correct -- but
+# it is also what a page that *does* describe products, customers and
+# service areas looks like when the model stops at the first field it
+# recognises. Asking again, told explicitly what has already been
+# rejected and why, costs one model call and no additional request.
+_BREADTH_HINT = """
+
+The previous attempt produced only statements that repeat data the
+registry already holds (name, address, legal form, and similar). Those
+are rejected, so do not report them again.
+
+Look past the headline. This page may still describe what the company
+sells, who it supplies, which areas or markets it serves, how it works,
+what it is certified or approved for, how many people it has, or what it
+has done recently. Any of those would be new information even though the
+company name is not.
+
+If genuinely nothing here goes beyond the registry record, return an
+empty `facts` array. That is a correct answer and will not be penalised.
+"""
+
+
+def _restatements_only(rejected: list[dict[str, Any]]) -> bool:
+    """Whether every refusal was a registry restatement."""
+    if not rejected:
+        return False
+    return all(
+        "registry" in str(item.get("reason", "")).lower() for item in rejected
+    )
+
+
+# Set per-call because extract_from_page is not re-entrant across
+# threads, and threading a mutable through six helpers is worse than a
+# module-level cell the tests reset.
+_last_error: str | None = None
+
+
+def _call_model(header: str):
+    """One model call, returning its result or ``None`` on any refusal."""
+    global _last_error
+
+    try:
+        return llm.complete_json(EXTRACTION_SCHEMA, system=SYSTEM_PROMPT, user=header)
+    except llm.LLMUnavailable as exc:
+        _last_error = str(exc)
+    except llm.LLMRefused as exc:
+        _last_error = f"model refused: {exc}"
+    except llm.LLMTruncated as exc:
+        _last_error = f"response truncated: {exc}"
+    except llm.LLMCallFailed as exc:
+        _last_error = str(exc)
+    return None
+
+
+def _verify_result(
+    result,
+    report: ExtractionReport,
+    seen_facts: list,
+    *,
+    page_text: str,
+    source_url: str,
+    retrieved_at: str,
+    tier: int,
+    source_type: str,
+    company_number: str,
+    registry_values: Iterable[str | None],
+) -> ExtractionReport:
+    """Check each proposed fact and record the refusals."""
     for candidate in (result.data or {}).get("facts") or []:
         if not isinstance(candidate, dict):
-            report.rejected.append({"candidate": str(candidate)[:200],
-                                    "reason": "not an object"})
+            report.rejected.append(
+                {"candidate": str(candidate)[:200], "reason": "not an object"}
+            )
             continue
 
         fact, reason = verify_candidate(

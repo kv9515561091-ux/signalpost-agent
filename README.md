@@ -41,7 +41,7 @@ python run_batch.py --no-llm                       # deterministic, free
 python run_batch.py --resume                       # continue an interrupted run
 python -m src.agent 989061593 --extract --max-crawl-links 0   # no crawl
 
-python -m unittest discover -s tests               # 440 tests
+python -m unittest discover -s tests               # 492 tests
 ruff check .                                         # lint
 mypy                                                 # types (advisory)
 ```
@@ -365,7 +365,7 @@ src/
   request_tracker.py  outbound request budget
   __main__.py      single-company CLI (`signalpost`)
 run_batch.py       shim preserving `python run_batch.py`
-tests/             440 tests, no network required
+tests/             492 tests, no network required
 tools/              record_fixture.py regenerates the end-to-end recording
 ```
 
@@ -435,10 +435,11 @@ that introduces it.
 | `NVIDIA_RPM` | no | Request pacing, default 30. `0` disables |
 
 Extraction depth, same defaults in both entry points and settable in
-both: **6 sources, 10 pages and 5 crawl links** per company. Sources stop
-at six because past that the marginal results are directories repeating
-Enhetsregisteret; pages exceed sources because a source costs a search
-while a page costs a model call. `--max-crawl-links 0` disables the crawl
+both: **8 sources, 14 pages and 5 crawl links** per company. Sources stop
+at eight because past that the marginal results are directories
+repeating Enhetsregisteret -- measured, tier 2 supplied 81% of published
+facts and tier 6 only 12%; pages exceed sources because a source costs a
+search while a page costs a model call. `--max-crawl-links 0` disables the crawl
 entirely, leaving homepage-only behaviour.
 
 These bound cost, never trust — the identity gate runs first, so widening
