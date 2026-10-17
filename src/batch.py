@@ -98,6 +98,31 @@ def _state_path(output_file: str | Path) -> Path:
     return Path(f"{output_file}{STATE_SUFFIX}")
 
 
+def _replace_with_retry(tmp_name: str, path: Path, attempts: int = 6) -> None:
+    """Rename the finished file into place, tolerating a transient lock.
+
+    Windows refuses ``os.replace`` with *Access denied* whenever another
+    handle has the destination open without FILE_SHARE_DELETE. Real-time
+    scanners do exactly that, and because the results file is rewritten
+    after every company the odds of catching one rise with the corpus
+    size -- a thousand-company run lost 74 profiles to it before this
+    was added.
+
+    The handle is already closed by the time we get here, so any failure
+    is somebody else's brief hold on the file. Retrying with a short back
+    off clears it; a real permission problem still raises, after the
+    budget of attempts, rather than silently losing the write.
+    """
+    for attempt in range(attempts):
+        try:
+            os.replace(tmp_name, path)
+            return
+        except PermissionError:
+            if attempt == attempts - 1:
+                raise
+            time.sleep(0.2 * (attempt + 1))
+
+
 def _atomic_write(path: Path, text: str) -> None:
     """Write via a temporary file and rename.
 
@@ -112,7 +137,7 @@ def _atomic_write(path: Path, text: str) -> None:
     try:
         with os.fdopen(handle, "w", encoding="utf-8") as stream:
             stream.write(text)
-        os.replace(tmp_name, path)
+        _replace_with_retry(tmp_name, path)
     except BaseException:
         # The temporary file is only cleaned up on failure; on success
         # os.replace has already consumed it.
