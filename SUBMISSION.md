@@ -12,15 +12,18 @@ https://github.com/kv9515561091-ux/signalpost-agent
 
 ## 2. Exact commit hash
 
-```
-HEAD of the default branch at submission time
-```
-
-Re-read it with:
-
 ```bash
 git rev-parse HEAD
 ```
+
+Current submission commit:
+
+```
+420b95b
+```
+
+CI is green on Python 3.10–3.13. Verify the exact hash at the moment of
+submission rather than relying on this line.
 
 ## 3. One command to run it
 
@@ -82,17 +85,45 @@ Declared in calls, since search is the only billable external API.
 | **Billable external** | **~200 TinyFish calls** |
 
 Enrichment depth is 8 sources / 14 pages per company. Measured on a
-50-company run: 858 requests, 17.2 per company, 233 published facts.
+138-company fully-enriched run:
+
+| Metric | Value |
+|---|---|
+| Requests | ~20 per company |
+| Facts extracted | 616 (4.5 per company) |
+| Companies with at least one fact | 76 / 138 |
+| Narratives produced | 126 / 138 |
+| Same-domain pages crawled | 237 |
+| **Facts missing evidence** | **0** |
+| **Facts from an unverified (tier 7) source** | **0** |
 
 `AGENT_REQUEST_LIMIT` sets the ceiling (default 2000). When the budget
 drains, the agent reads fewer pages per company and past a floor falls
 back to the registry spine alone — it degrades coverage rather than
-exceeding the limit.
+exceeding the limit. A company whose enrichment was skipped says so in
+`retrieval_errors`, so a reader can tell a profile with no facts
+because the company has none from one that ran out of budget.
+
+`AGENT_HTTP_TIMEOUT` and `AGENT_HTTP_ATTEMPTS` (defaults 20s / 2) let a
+bulk corpus build trade patience for throughput without changing what a
+scored daily run does.
 
 ## 6. Company profiles
 
-At least 1,000 profiles are supplied. See §7 for how they were
-produced and what they contain.
+At least 1,000 profiles are supplied.
+
+- **All 1,000** are built registry-only: legal name and previous names,
+  legal form, status, industry and code, business description, founding
+  and registration dates, addresses, municipality, contact details,
+  group and status flags, full management list including every director,
+  and multi-year filed accounts where they exist.
+- **138** of those are additionally enriched with verified web sources,
+  quote-backed extraction, same-domain crawling and a written narrative.
+
+Registry-only is not a lesser record. The registry *is* the authoritative
+source for everything it holds, and enrichment adds facts the registry
+does not carry rather than correcting it. The enriched subset shows
+what the enrichment layer contributes.
 
 ## 7. What the agent produces
 
