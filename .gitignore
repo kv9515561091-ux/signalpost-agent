@@ -20,3 +20,8 @@ build/
 dist/
 .mypy_cache/
 .ruff_cache/
+
+# Delivered corpora are tracked despite the data/*.json rule above:
+# the submission requires the profiles to be present in the repository.
+!data/registry_1000.json
+!data/corpus_profiles.json
