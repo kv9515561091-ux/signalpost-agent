@@ -142,7 +142,15 @@ class FallbackTests(unittest.TestCase):
         self.assertIn("unavailable", result.note)
 
     def test_successful_llm_narrative_is_prepended(self):
-        with patch("src.explain.llm.is_available", return_value=True):
+        with patch("src.explain.llm.is_available", return_value=True), patch(
+            # Attribution is read from the environment, not from the
+            # mocked is_available. Without this the assertion held only
+            # on a machine with credentials -- CI has none, so it failed
+            # there and passed locally, which is the worst way for a
+            # test to behave.
+            "src.explain.llm.describe",
+            return_value="openai_compatible:nvidia/nemotron-3-super-120b-a12b",
+        ):
             with patch(
                 "src.explain.llm.complete_text",
                 return_value="The company invests in property in Oslo.",
