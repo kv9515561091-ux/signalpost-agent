@@ -129,5 +129,57 @@ class NormaliseYearTests(unittest.TestCase):
         self.assertTrue(year["audited"])
 
 
+class MissingFigureTests(unittest.TestCase):
+    """A filed figure that is absent is not a zero.
+
+    Nine profiles were lost across a thousand-company run to
+    ``TypeError: unsupported operand type(s) for -: 'float' and
+    'NoneType'``. The year-over-year guard checked the current year for
+    None and subtracted the previous year's regardless, so a company
+    whose earlier filing omitted revenue lost its whole profile rather
+    than its growth figure.
+    """
+
+    def test_prior_year_without_revenue_does_not_crash(self):
+        from src.financials import _year_over_year
+
+        years = [
+            {"fiscal_year": "2024", "revenue": None, "net_profit": 5.0},
+            {"fiscal_year": "2025", "revenue": 100.0, "net_profit": 8.0},
+        ]
+        _year_over_year(years)
+        self.assertIsNone(years[1]["revenue_growth_pct"])
+
+    def test_current_year_without_revenue_does_not_crash(self):
+        from src.financials import _year_over_year
+
+        years = [
+            {"fiscal_year": "2024", "revenue": 80.0},
+            {"fiscal_year": "2025", "revenue": None},
+        ]
+        _year_over_year(years)
+        self.assertIsNone(years[1]["revenue_growth_pct"])
+
+    def test_both_missing_does_not_crash(self):
+        from src.financials import _year_over_year
+
+        years = [
+            {"fiscal_year": "2024", "revenue": None},
+            {"fiscal_year": "2025", "revenue": None},
+        ]
+        _year_over_year(years)
+        self.assertIsNone(years[1]["revenue_growth_pct"])
+
+    def test_complete_years_still_grow(self):
+        from src.financials import _year_over_year
+
+        years = [
+            {"fiscal_year": "2024", "revenue": 80.0},
+            {"fiscal_year": "2025", "revenue": 100.0},
+        ]
+        _year_over_year(years)
+        self.assertAlmostEqual(years[1]["revenue_growth_pct"], 25.0, places=1)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -169,11 +169,24 @@ def _year_over_year(years: list[dict[str, Any]]) -> None:
 # Not strict: consecutive-year pairs come from a list sliced against
     # itself, so the lengths differ by one by construction.
     for previous, current in zip(ordered, ordered[1:], strict=False):
-            current["revenue_growth_pct"] = _ratio(
-            current.get("revenue") - previous["revenue"]
-            if current.get("revenue") is not None
-            else None,
-            abs(previous["revenue"]) if previous.get("revenue") else None,
+        previous_revenue = previous.get("revenue")
+        current_revenue = current.get("revenue")
+
+        # Both years must have a figure. The guard previously checked
+        # only the current year, so a company whose earlier filing
+        # omitted revenue raised TypeError subtracting None and the whole
+        # profile was lost -- nine of them across a thousand-company run.
+        # A filed figure that is absent is not a zero, and treating it
+        # as one would be worse than publishing nothing.
+        growth = (
+            current_revenue - previous_revenue
+            if current_revenue is not None and previous_revenue is not None
+            else None
+        )
+
+        current["revenue_growth_pct"] = _ratio(
+            growth,
+            abs(previous_revenue) if previous_revenue else None,
         )
 
 
