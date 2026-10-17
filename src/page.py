@@ -16,13 +16,14 @@ reason over, not markup, and an extra parser is not worth the dependency.
 from __future__ import annotations
 
 import html
+import os
 import re
 from dataclasses import dataclass, field
 
 from src.http import fetch_bytes
 from src.netguard import UnsafeUrl, validate_url
 
-REQUEST_TIMEOUT = 20
+REQUEST_TIMEOUT = int(os.getenv("AGENT_HTTP_TIMEOUT", "20"))
 MAX_BYTES = 2_000_000
 MAX_TEXT_CHARS = 200_000
 

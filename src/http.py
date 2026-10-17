@@ -10,6 +10,7 @@ before degrading to an empty result that records why it is empty.
 
 from __future__ import annotations
 
+import os
 import time
 from typing import Any
 from urllib.parse import urljoin
@@ -26,8 +27,8 @@ from src.netguard import (
 )
 from src.request_tracker import request_tracker
 
-DEFAULT_TIMEOUT = 20
-DEFAULT_ATTEMPTS = 2
+DEFAULT_TIMEOUT = int(os.getenv("AGENT_HTTP_TIMEOUT", "20"))
+DEFAULT_ATTEMPTS = int(os.getenv("AGENT_HTTP_ATTEMPTS", "2"))
 RETRY_BACKOFF_SECONDS = 1.0
 
 
