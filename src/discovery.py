@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from src.identity import CompanyIdentity, verify
+from src.social import is_social_url, social_handle_matches
 from src.sources import TIER_FIRST_PARTY, confidence_for, get_domain, rank
 
 DEFAULT_MAX_RESULTS = 10
@@ -125,6 +126,15 @@ def discover_sources(
         for result in results:
             url = result.get("url")
             if not url or url in seen_urls:
+                continue
+
+            if is_social_url(url) and not social_handle_matches(
+                url,
+                company_name=identity.name,
+                previous_names=identity.previous_names,
+                registered_website=identity.registered_website,
+            ):
+                seen_urls.add(url)
                 continue
 
             verdict = verify(result, identity)

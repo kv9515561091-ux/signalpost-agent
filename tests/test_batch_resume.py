@@ -32,6 +32,7 @@ def _interrupt():
 
 class FakeProfile:
     def __init__(self, number: str, **overrides):
+        self.facts = []
         self._data = {
             "company_number": number,
             "company_name": f"COMPANY {number} AS",
@@ -167,6 +168,24 @@ class ResumeTests(BatchFixture):
         self._run(["1", "2", "3"], resume=True)
 
         self.assertEqual(self.calls, ["3"])
+
+    def test_a_resumed_run_drops_companies_not_in_the_current_input(self):
+        self._patch()
+        self._run(["1", "2"])
+        self.calls.clear()
+
+        results = self._run(["1"], resume=True)
+
+        self.assertEqual(self.calls, [])
+        self.assertEqual(
+            [row["company_number"] for row in results], ["1"]
+        )
+        state = json.loads(
+            Path(f"{self.out}{batch.STATE_SUFFIX}").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual(sorted(state["completed"]), ["1"])
 
     def test_errored_companies_are_retried(self):
         """A transient failure must not become permanent."""
@@ -308,6 +327,58 @@ class CorruptStateTests(BatchFixture):
 
         self._run(["1"], resume=True)
         self.assertEqual(self.calls, ["1"])
+
+
+class LoadCompanyNumbersTests(unittest.TestCase):
+    """A UTF-8 BOM must not become part of the first org number."""
+
+    def test_bom_is_not_part_of_the_first_number(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "companies.txt"
+            path.write_bytes(b"\xef\xbb\xbf916627939\n988539473\n")
+            self.assertEqual(
+                batch.load_company_numbers(str(path)),
+                ["916627939", "988539473"],
+            )
+
+    def test_blank_lines_and_whitespace_are_skipped(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "companies.txt"
+            path.write_bytes(b"  916627939  \n\n988539473\n")
+            self.assertEqual(
+                batch.load_company_numbers(str(path)),
+                ["916627939", "988539473"],
+            )
+
+
+class StateIsCompleteTests(unittest.TestCase):
+    """A finished day must refresh; only an interrupted one resumes."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.out = str(Path(self._tmp.name) / "out.json")
+
+    def _write(self, completed):
+        Path(f"{self.out}{batch.STATE_SUFFIX}").write_text(
+            json.dumps({"mode": "x", "completed": completed}),
+            encoding="utf-8",
+        )
+
+    def test_all_requested_companies_completed(self):
+        self._write(["1", "2"])
+        self.assertTrue(batch.state_is_complete(self.out, ["1", "2"]))
+
+    def test_one_missing_company_is_not_complete(self):
+        self._write(["1"])
+        self.assertFalse(batch.state_is_complete(self.out, ["1", "2"]))
+
+    def test_absent_state_is_not_complete(self):
+        self.assertFalse(batch.state_is_complete(self.out, ["1"]))
+
+    def test_empty_request_is_not_complete(self):
+        self._write([])
+        self.assertFalse(batch.state_is_complete(self.out, []))
 
 
 class StateShapeTests(BatchFixture):

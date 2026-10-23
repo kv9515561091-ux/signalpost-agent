@@ -24,14 +24,18 @@ model is never asked to restate identity, so it can never overwrite it.
 
 from __future__ import annotations
 
+import copy
+import os
 import re
+import threading
 from collections.abc import Iterable
 from dataclasses import dataclass
 from dataclasses import field as dataclass_field
 from typing import Any
+from urllib.parse import urlparse
 
 from src import llm
-from src.sources import TIER_MAX_CONFIDENCE
+from src.sources import TIER_FIRST_PARTY, TIER_MAX_CONFIDENCE
 from src.text import fold
 
 # Facts the registry already supplies, authoritatively. The model is
@@ -123,8 +127,10 @@ EXTRACTION_SCHEMA: dict[str, Any] = {
                     "published_date": {
                         "type": "string",
                         "description": (
-                            "Date the page or news item was published, "
-                            "as YYYY-MM-DD, or empty if not stated."
+                            "Publication date visible in the quoted text, "
+                            "as YYYY-MM-DD. Required for "
+                            "recent_developments. Never use a modified or "
+                            "updated timestamp."
                         ),
                     },
                 },
@@ -174,6 +180,12 @@ Rules:
 - Prefer specific, verifiable statements over vague marketing language.
 - If the page describes a service, product or event, date it using the
   date on the page if one is given.
+- `recent_developments` only for a real announcement. Copy its visible
+  publication date into the `quote` and set `published_date` to that
+  date. Never use a "last updated", "modified", feed "updated" or footer
+  copyright date. Do not report menu labels such as "News", "See more
+  news" or "Les mer", and do not report product, category or listing
+  pages as news.
 
 Choosing the `field`:
 - `business_summary` is the right field for a great many facts. When in
@@ -192,6 +204,55 @@ Choosing the `field`:
   field to make the output look varied.
 """
 
+# Two pages per call halves the number of calls, and the call, not the
+# request, is the expensive part: a run is paced by a 30 RPM model
+# limiter and each call waits on its own completion. Set to 1 to get the
+# per-page path back for an A/B run.
+MAX_BATCH_PAGES = max(1, int(os.environ.get("AGENT_BATCH_PAGES", "2")))
+
+# A page can be 200,000 characters. Two of those in one prompt is both
+# slow and close to the context limit, so anything larger than this is
+# read on its own. The cap is generous: ordinary company pages are a
+# few thousand characters, and the ones that exceed 50,000 are mostly
+# navigation and scripts.
+MAX_BATCH_PAGE_CHARS = 50_000
+
+# Derived from SYSTEM_PROMPT rather than written twice, so a rule added
+# there cannot silently fail to apply to batches. The changed sentences
+# are the ones that assume a single page; each fact also has to say
+# which page its quote came from.
+BATCH_SYSTEM_PROMPT = (
+    SYSTEM_PROMPT.replace(
+        "You extract structured facts about a company from one web page.",
+        "You extract structured facts about a company from several web "
+        "pages at once.",
+    )
+    .replace(
+        "The page has already been verified as belonging to the target "
+        "company by\nmatching its organization number. Treat its content "
+        "as authoritative\nabout that company.",
+        "Each page has already been verified as belonging to the target "
+        "company\nby matching its organization number. Treat each page's "
+        "content as\nauthoritative about that company.",
+    )
+    .replace(
+        "Copy the `quote` field VERBATIM from the page.",
+        "Copy the `quote` field VERBATIM from the block named by `page`.",
+    )
+    + "\n- Every fact must carry the `page` id of the block its quote "
+      "came from.\n  A quote that is not in the block it names is "
+      "discarded.\n"
+    "- Read every block before answering. Do not stop after the first "
+    "block\n  because it is richer: a fact that appears only in the "
+    "second block is still\n  wanted, and a page that was skipped "
+    "contributes nothing.\n"
+    "- Extract as thoroughly from each block as you would if it were "
+    "the only\n  page. Do not compress, summarise, or trade detail in "
+    "one block for\n  coverage of another. A content-rich block "
+    "normally yields many facts;\n  finding only a handful means you "
+    "stopped too early.\n"
+)
+
 _DATE = re.compile(r"\b(\d{4})-(\d{2})-(\d{2})\b")
 
 # Norwegian pages state dates as 12.03.2025 and 12. mars 2025 far more
@@ -200,10 +261,31 @@ _NORWEGIAN_MONTHS = {
     "januar": 1, "februar": 2, "mars": 3, "april": 4,
     "mai": 5, "juni": 6, "juli": 7, "august": 8,
     "september": 9, "oktober": 10, "november": 11, "desember": 12,
+    "jan": 1, "feb": 2, "mar": 3, "apr": 4, "jun": 6,
+    "jul": 7, "aug": 8, "sep": 9, "okt": 10, "nov": 11, "des": 12,
+    "january": 1, "february": 2, "march": 3, "may": 5, "june": 6,
+    "july": 7, "october": 10, "december": 12,
+}
+_MONTH_NAMES = {
+    1: ("januar", "jan", "january"),
+    2: ("februar", "feb", "february"),
+    3: ("mars", "mar", "march"),
+    4: ("april", "apr", "april"),
+    5: ("mai", "mai", "may"),
+    6: ("juni", "jun", "june"),
+    7: ("juli", "jul", "july"),
+    8: ("august", "aug", "august"),
+    9: ("september", "sep", "september"),
+    10: ("oktober", "okt", "october"),
+    11: ("november", "nov", "november"),
+    12: ("desember", "des", "december"),
 }
 _DATE_DOTTED = re.compile(r"\b(\d{1,2})\.(\d{1,2})\.(\d{4})\b")
 _DATE_LONG = re.compile(
-    r"\b(\d{1,2})\.?\s+([A-Za-zæøåÆØÅ]+)\s+(\d{4})\b", re.IGNORECASE
+    r"\b(\d{1,2})\.?\s+([A-Za-z.]+)\s+(\d{4})\b", re.IGNORECASE
+)
+_DATE_MONTH_FIRST = re.compile(
+    r"\b([A-Za-z.]+)\s+(\d{1,2}),?\s+(\d{4})\b", re.IGNORECASE
 )
 _ORG_NUMBER = re.compile(r"(?<!\d)\d{3}[\s-]?\d{3}[\s-]?\d{3}(?!\d)")
 
@@ -396,6 +478,18 @@ class ExtractionReport:
         return len(self.facts)
 
 
+@dataclass
+class PageInput:
+    """One fetched page, as extraction sees it."""
+
+    page_text: str
+    source_url: str
+    retrieved_at: str
+    tier: int
+    source_type: str
+    title: str = ""
+
+
 def _normalise_whitespace(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
@@ -426,10 +520,11 @@ def _valid_date(day: int, month: int, year: int) -> str | None:
 def _valid_published_date(value: str | None) -> str | None:
     """Normalise a stated publication date to ISO, or ``None``.
 
-    Accepts ISO (``2025-03-12``), numeric Norwegian (``12.03.2025``) and
-    long-form Norwegian (``12. mars 2025``). Anything unrecognised is
-    dropped rather than guessed at: a wrong date is worse than no date,
-    because it would feed the freshness assessment.
+    Accepts ISO (``2025-03-12``), numeric Norwegian (``12.03.2025``),
+    long-form Norwegian (``12. mars 2025``) and English month-first forms
+    (``March 12, 2025``). Anything unrecognised is dropped rather than
+    guessed at: a wrong date is worse than no date, because it would feed
+    the freshness assessment.
     """
     if not value:
         return None
@@ -448,9 +543,141 @@ def _valid_published_date(value: str | None) -> str | None:
 
     match = _DATE_LONG.search(text)
     if match:
-        month = _NORWEGIAN_MONTHS.get(fold(match.group(2)).replace(" ", ""))
+        month = _NORWEGIAN_MONTHS.get(
+            fold(match.group(2)).replace(" ", "").rstrip(".")
+        )
         if month:
             return _valid_date(int(match.group(1)), month, int(match.group(3)))
+
+    match = _DATE_MONTH_FIRST.search(text)
+    if match:
+        month = _NORWEGIAN_MONTHS.get(
+            fold(match.group(1)).replace(" ", "").rstrip(".")
+        )
+        if month:
+            return _valid_date(int(match.group(2)), month, int(match.group(3)))
+
+    return None
+
+
+_UPDATE_MARKERS = (
+    "sist oppdatert", "sist endret", "sist endra",
+    "last updated", "last modified", "modified on", "updated on",
+    "oppdatert:", "updated:",
+)
+_UPDATE_WORD_NEAR_DATE = re.compile(
+    r"\b(?:updated|modified|oppdatert)\b[\"']?\s*(?:on|:)?\s*[\"']?\s*"
+    r"(?:\d{1,2}[./-]\d{1,2}[./-]\d{2,4}"
+    r"|\d{4}-\d{2}-\d{2}"
+    r"|\d{1,2}\s+\d{1,2}\s+\d{4}"
+    r"|\d{4}\s+\d{1,2}\s+\d{1,2}"
+    r"|\d{1,2}\.?\s+[a-z]{3,9}\.?\s+\d{4}"
+    r"|[a-z]{3,9}\s+\d{1,2},?\s+\d{4})",
+    re.IGNORECASE,
+)
+
+
+def _has_update_marker(text: str) -> bool:
+    folded = fold(text)
+    if any(marker in folded for marker in _UPDATE_MARKERS):
+        return True
+    return bool(_UPDATE_WORD_NEAR_DATE.search(folded))
+
+_NEWS_NAVIGATION_LABELS = {
+    "news", "nyheter", "nyhet", "siste nytt", "latest news",
+    "more news", "all news", "all corporate news", "se mer", "se flere",
+    "see more", "see more news", "read more", "les mer", "view all",
+    "vis alle", "press", "presse", "media", "aktuelt", "events",
+    "arrangementer", "products", "produkter", "tjenester", "services",
+}
+
+_NEWS_NAVIGATION_PREFIXES = (
+    "se mer", "se flere", "see more", "read more", "les mer",
+    "view all", "vis alle",
+)
+
+_PRODUCT_PATH_HINTS = (
+    "/produkt", "/products", "/produkter", "/tjenester", "/services",
+    "/butikk", "/shop", "/kategori", "/category", "/sortiment",
+    "/kolleksjon", "/collections",
+)
+
+
+def _label(value: str) -> str:
+    return " ".join(fold(value).replace("|", " ").split())
+
+
+def _date_forms(iso: str) -> set[str]:
+    year, month, day = (int(part) for part in iso.split("-"))
+    forms = {
+        iso,
+        f"{day}.{month}.{year}",
+        f"{day:02d}.{month:02d}.{year}",
+    }
+    for day_text in (str(day), f"{day:02d}"):
+        for name in _MONTH_NAMES[month]:
+            forms.update({
+                f"{day_text}. {name} {year}",
+                f"{day_text}. {name}. {year}",
+                f"{day_text} {name} {year}",
+                f"{day_text}.{name} {year}",
+                f"{name} {day_text}, {year}",
+            })
+        if 10 <= day <= 19:
+            ordinal = f"{day}th"
+        elif day % 10 == 1:
+            ordinal = f"{day}st"
+        elif day % 10 == 2:
+            ordinal = f"{day}nd"
+        elif day % 10 == 3:
+            ordinal = f"{day}rd"
+        else:
+            ordinal = f"{day}th"
+        for name in _MONTH_NAMES[month]:
+            forms.add(f"{name} {ordinal}, {year}")
+    return forms
+
+
+def _date_in_quote(published_date: str, quote: str) -> bool:
+    folded_quote = fold(quote)
+    return any(fold(form) in folded_quote for form in _date_forms(published_date))
+
+
+def _looks_like_product_page(source_url: str) -> bool:
+    path = urlparse(source_url).path.lower()
+    return any(hint in path for hint in _PRODUCT_PATH_HINTS)
+
+
+def _recent_development_reason(
+    candidate: dict[str, Any],
+    *,
+    quote: str,
+    source_url: str,
+    published_date: str | None,
+) -> str | None:
+    if not published_date:
+        return "recent developments require a stated publication date"
+
+    if not _date_in_quote(published_date, quote):
+        return "publication date is not present in the quoted text"
+
+    if _has_update_marker(quote):
+        return (
+            "date is a modified or updated timestamp, not a publication "
+            "date"
+        )
+
+    value_label = _label(str(candidate.get("value") or ""))
+    quote_label = _label(quote)
+    if (
+        value_label in _NEWS_NAVIGATION_LABELS
+        or quote_label in _NEWS_NAVIGATION_LABELS
+        or value_label.startswith(_NEWS_NAVIGATION_PREFIXES)
+    ):
+        return "navigation or section label, not a news item"
+
+    if _looks_like_product_page(source_url):
+        return "product or listing page, not a dated news item"
 
     return None
 
@@ -515,6 +742,17 @@ def verify_candidate(
         if existing.field == name and _overlap(existing.value, text) >= 0.5:
             return None, f"duplicates an accepted {name} fact"
 
+    published_date = _valid_published_date(candidate.get("published_date"))
+    if name == "recent_developments":
+        reason = _recent_development_reason(
+            candidate,
+            quote=quote,
+            source_url=source_url,
+            published_date=published_date,
+        )
+        if reason:
+            return None, reason
+
     return (
         ExtractedFact(
             field=name,
@@ -525,9 +763,7 @@ def verify_candidate(
             tier=tier,
             source_type=source_type,
             confidence=TIER_MAX_CONFIDENCE.get(tier, 0.25),
-            published_date=_valid_published_date(
-                candidate.get("published_date")
-            ),
+            published_date=published_date,
         ),
         None,
     )
@@ -577,7 +813,7 @@ def extract_from_page(
 
     result = _call_model(header)
     if result is None:
-        report.error = _last_error or "extraction failed"
+        report.error = getattr(_state, "error", None) or "extraction failed"
         return report
 
     report.llm_used = True
@@ -597,7 +833,18 @@ def extract_from_page(
     # One retry, and only for the failure that looked like an empty page
     # but might not have been: every proposal refused as a registry
     # restatement. Costs a model call, not a request.
-    if not report.facts and _restatements_only(report.rejected):
+    #
+    # The retry is earned when the page is the company speaking for
+    # itself, or when the company has nothing yet and a directory may be
+    # its only source. Once facts exist, a directory that only restated
+    # the registry has nothing to add: measured across fifty companies,
+    # directory pages yielded 0.11 facts each, and this second pass cost
+    # as much as reading another page.
+    if (
+        not report.facts
+        and _restatements_only(report.rejected)
+        and (tier <= TIER_FIRST_PARTY or not seen_facts)
+    ):
         second = _call_model(header + _BREADTH_HINT)
         if second is not None:
             # A second attempt at an already-declined page has to be
@@ -624,6 +871,181 @@ def extract_from_page(
             report.retried_rejections = first_pass_rejections
 
     return report
+
+
+def extract_from_pages(
+    pages: Iterable[PageInput],
+    *,
+    company_number: str,
+    company_name: str,
+    registry_values: Iterable[str | None] = (),
+    already_accepted: Iterable[ExtractedFact] = (),
+) -> list[ExtractionReport]:
+    """Extract and verify facts from several pages in one model call.
+
+    Returns one report per input page, in input order, so the caller can
+    keep attributing facts, refusals and errors to the page they belong
+    to. A page with no text is reported without a call; a batch that
+    fails is retried as single pages, because a two-page prompt is the
+    thing that failed, not the pages themselves.
+
+    Never raises.
+    """
+    inputs = list(pages)
+    reports = [ExtractionReport(source_url=page.source_url) for page in inputs]
+    seen_facts = list(already_accepted)
+    seen_before = list(already_accepted)
+
+    usable: list[tuple[int, PageInput]] = []
+    for index, page in enumerate(inputs):
+        if not page.page_text or not page.page_text.strip():
+            reports[index].error = "page had no text content"
+            continue
+        usable.append((index, page))
+
+    if not usable:
+        return reports
+
+    if not llm.is_available():
+        reason = llm.unavailable_reason() or "LLM unavailable"
+        for index, _ in usable:
+            reports[index].error = reason
+        return reports
+
+    if len(usable) == 1 or any(
+        len(page.page_text) > MAX_BATCH_PAGE_CHARS for _, page in usable
+    ):
+        return _extract_each_individually(
+            usable,
+            reports,
+            seen_facts,
+            company_number=company_number,
+            company_name=company_name,
+            registry_values=registry_values,
+        )
+
+    ids = [f"p{number}" for number in range(1, len(usable) + 1)]
+    pages_by_id = {pid: page for pid, (_, page) in zip(ids, usable, strict=True)}
+    reports_by_id = {
+        pid: reports[index] for pid, (index, _) in zip(ids, usable, strict=True)
+    }
+
+    result = _call_model(
+        _batch_header(ids, pages_by_id, company_name, company_number),
+        schema=_batch_schema(ids),
+        system=BATCH_SYSTEM_PROMPT,
+    )
+    if result is None:
+        reason = getattr(_state, "error", None) or "extraction failed"
+        if _batch_failure_is_local(reason):
+            return _extract_each_individually(
+                usable,
+                reports,
+                seen_facts,
+                company_number=company_number,
+                company_name=company_name,
+                registry_values=registry_values,
+            )
+        # A rate limit or an outage will fail the single-page calls just
+        # as surely, and retrying twice per page is how a bad minute
+        # becomes a request storm.
+        for index, _ in usable:
+            reports[index].error = reason
+        return reports
+
+    for pid in ids:
+        reports_by_id[pid].llm_used = True
+
+    _verify_batch_result(
+        result,
+        reports_by_id,
+        pages_by_id,
+        seen_facts,
+        ids=ids,
+        company_number=company_number,
+        registry_values=registry_values,
+    )
+
+    # Same breadth retry as a single-page read, applied per page. The
+    # test uses the facts known before the batch: a directory paired
+    # with a productive page should not be retried merely because its
+    # neighbour spoke first.
+    #
+    # A page with no facts and no refusals is just as suspicious: the
+    # model may have skipped that block instead of reading it. Re-read
+    # it alone when the batch proved it was reading another block.
+    # Coverage is worth more than the saved call; a batch that returned
+    # nothing at all is left alone, since an empty answer is legitimate
+    # and re-reading both pages would give back the whole saving.
+    batch_has_facts = any(report.facts for report in reports_by_id.values())
+    for pid, (index, page) in zip(ids, usable, strict=True):
+        report = reports_by_id[pid]
+        restatements = _restatements_only(report.rejected) and (
+            page.tier <= TIER_FIRST_PARTY or not seen_before
+        )
+        silent_skip = not report.rejected and batch_has_facts
+        if not report.facts and (restatements or silent_skip):
+            replacement = _extract_individually(
+                page,
+                company_number=company_number,
+                company_name=company_name,
+                registry_values=registry_values,
+                already_accepted=seen_facts,
+            )
+            if not replacement.retried_for_breadth:
+                # The batch was the first pass, so a single-page read is
+                # already the second attempt at this page. Record the
+                # extra call even though extract_from_page did not make
+                # it itself.
+                replacement.retried_for_breadth = True
+                replacement.retried_rejections = report.rejected
+            reports[index] = replacement
+            seen_facts.extend(replacement.facts)
+
+    return reports
+
+
+def _extract_each_individually(
+    usable: list[tuple[int, PageInput]],
+    reports: list[ExtractionReport],
+    seen_facts: list[ExtractedFact],
+    *,
+    company_number: str,
+    company_name: str,
+    registry_values: Iterable[str | None],
+) -> list[ExtractionReport]:
+    for index, page in usable:
+        reports[index] = _extract_individually(
+            page,
+            company_number=company_number,
+            company_name=company_name,
+            registry_values=registry_values,
+            already_accepted=seen_facts,
+        )
+        seen_facts.extend(reports[index].facts)
+    return reports
+
+
+def _extract_individually(
+    page: PageInput,
+    *,
+    company_number: str,
+    company_name: str,
+    registry_values: Iterable[str | None],
+    already_accepted: Iterable[ExtractedFact],
+) -> ExtractionReport:
+    return extract_from_page(
+        page_text=page.page_text,
+        source_url=page.source_url,
+        retrieved_at=page.retrieved_at,
+        company_number=company_number,
+        company_name=company_name,
+        tier=page.tier,
+        source_type=page.source_type,
+        title=page.title,
+        registry_values=registry_values,
+        already_accepted=already_accepted,
+    )
 
 
 # Asked when a first pass produced nothing but registry restatements.
@@ -662,27 +1084,100 @@ def _restatements_only(rejected: list[dict[str, Any]]) -> bool:
     )
 
 
-# Set per-call because extract_from_page is not re-entrant across
-# threads, and threading a mutable through six helpers is worse than a
-# module-level cell the tests reset.
-_last_error: str | None = None
+# Set per-call because extraction is not re-entrant across threads, and
+# threading a mutable through six helpers is worse than a cell the tests
+# reset.
+#
+# The cell has to be thread-local. Companies are extracted concurrently,
+# and with one module-level string a model failure on company A could be
+# read back by company B, which would then publish A's error against its
+# own page. Nothing false reaches a profile that way, but the diagnostic
+# stops meaning anything.
+_state = threading.local()
 
 
-def _call_model(header: str):
+def _call_model(
+    header: str,
+    *,
+    schema: dict[str, Any] | None = None,
+    system: str | None = None,
+):
     """One model call, returning its result or ``None`` on any refusal."""
-    global _last_error
+    # Cleared on entry, so a previous page on this thread cannot supply
+    # the reason this one failed.
+    _state.error = None
+    _state.error_kind = None
 
     try:
-        return llm.complete_json(EXTRACTION_SCHEMA, system=SYSTEM_PROMPT, user=header)
+        return llm.complete_json(
+            EXTRACTION_SCHEMA if schema is None else schema,
+            system=SYSTEM_PROMPT if system is None else system,
+            user=header,
+        )
     except llm.LLMUnavailable as exc:
-        _last_error = str(exc)
+        _state.error = str(exc)
+        _state.error_kind = "unavailable"
     except llm.LLMRefused as exc:
-        _last_error = f"model refused: {exc}"
+        _state.error = f"model refused: {exc}"
+        _state.error_kind = "refused"
     except llm.LLMTruncated as exc:
-        _last_error = f"response truncated: {exc}"
+        _state.error = f"response truncated: {exc}"
+        _state.error_kind = "truncated"
     except llm.LLMCallFailed as exc:
-        _last_error = str(exc)
+        _state.error = str(exc)
+        _state.error_kind = "failed"
     return None
+
+
+def _batch_failure_is_local(reason: str) -> bool:
+    """Whether a failed batch is worth retrying as single pages.
+
+    A truncated response is the batch's own fault: two pages can exceed
+    the output budget even when neither page would alone. A malformed
+    response is likewise more likely with two blocks to interleave. A
+    rate limit or an outage is not local, and retrying it once per page
+    turns one failure into several.
+    """
+    kind = getattr(_state, "error_kind", None)
+    if kind in {"refused", "truncated"}:
+        return True
+    if kind != "failed":
+        return False
+    lowered = reason.lower()
+    return "json" in lowered or "no content" in lowered
+
+
+def _batch_header(
+    ids: list[str],
+    pages_by_id: dict[str, PageInput],
+    company_name: str,
+    company_number: str,
+) -> str:
+    parts = [f"Company: {company_name} (org.nr {company_number})"]
+    for pid in ids:
+        page = pages_by_id[pid]
+        block = f"=== PAGE {pid} ==="
+        if page.title:
+            block += f"\nTitle: {page.title}"
+        block += f"\nURL: {page.source_url}"
+        parts.append(f"{block}\n--- PAGE CONTENT ---\n{page.page_text}")
+    return "\n\n".join(parts)
+
+
+def _batch_schema(page_ids: list[str]) -> dict[str, Any]:
+    """The extraction schema plus the page a fact must be attributed to."""
+    schema = copy.deepcopy(EXTRACTION_SCHEMA)
+    items = schema["properties"]["facts"]["items"]
+    items["properties"]["page"] = {
+        "type": "string",
+        "enum": list(page_ids),
+        "description": (
+            "Id of the page block whose text contains the quote. "
+            "Required: a fact is checked against the page it names."
+        ),
+    }
+    items["required"] = [*items["required"], "page"]
+    return schema
 
 
 def _verify_result(
@@ -732,3 +1227,72 @@ def _verify_result(
             )
 
     return report
+
+
+def _verify_batch_result(
+    result,
+    reports_by_id: dict[str, ExtractionReport],
+    pages_by_id: dict[str, PageInput],
+    seen_facts: list,
+    *,
+    ids: list[str],
+    company_number: str,
+    registry_values: Iterable[str | None],
+) -> None:
+    """Check each proposal against the page it claims to quote.
+
+    The model's ``page`` label is a hint, not evidence: a quote located
+    in exactly one block is attributed there even if the label is wrong,
+    because the text is the thing that was verified. A quote found
+    nowhere is refused against the block it named.
+    """
+    for candidate in (result.data or {}).get("facts") or []:
+        if not isinstance(candidate, dict):
+            reports_by_id[ids[0]].rejected.append(
+                {"candidate": str(candidate)[:200], "reason": "not an object"}
+            )
+            continue
+
+        quote = str(candidate.get("quote") or "")
+        matches = [
+            pid
+            for pid in ids
+            if quote_exists(quote, pages_by_id[pid].page_text)
+        ]
+        claimed = str(candidate.get("page") or "").strip()
+
+        if claimed in matches:
+            pid = claimed
+        elif len(matches) == 1 or matches:
+            pid = matches[0]
+        elif claimed in pages_by_id:
+            pid = claimed
+        else:
+            pid = ids[0]
+
+        page = pages_by_id[pid]
+        fact, reason = verify_candidate(
+            candidate,
+            page_text=page.page_text,
+            source_url=page.source_url,
+            retrieved_at=page.retrieved_at,
+            tier=page.tier,
+            source_type=page.source_type,
+            company_number=company_number,
+            registry_values=registry_values,
+            accepted=seen_facts,
+        )
+
+        report = reports_by_id[pid]
+        if fact is not None:
+            report.facts.append(fact)
+            seen_facts.append(fact)
+        else:
+            report.rejected.append(
+                {
+                    "field": candidate.get("field"),
+                    "value": str(candidate.get("value"))[:200],
+                    "quote": quote[:300],
+                    "reason": reason,
+                }
+            )

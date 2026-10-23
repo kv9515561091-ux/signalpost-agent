@@ -128,6 +128,100 @@ class RoleTests(unittest.TestCase):
         self.assertEqual(len(changes), 2)
 
 
+class ProductionRoleTests(unittest.TestCase):
+    """The builder writes person_name/role, not name/role_label."""
+
+    def test_a_person_name_role_is_detected(self):
+        before = profile(roles=[])
+        after = profile(
+            roles=[{"person_name": "Kari Nordmann", "role": "Daglig leder"}]
+        )
+        changes = diff_profiles(before, after)
+        self.assertEqual(len(changes), 1)
+        self.assertEqual(changes[0]["field"], "roles.Daglig leder")
+        self.assertEqual(changes[0]["current"], "Kari Nordmann")
+
+    def test_a_role_change_on_the_same_person_is_one_event(self):
+        before = profile(
+            roles=[{"person_name": "Kari Nordmann", "role": "Daglig leder"}]
+        )
+        after = profile(
+            roles=[{"person_name": "Kari Nordmann", "role": "Styrets leder"}]
+        )
+        changes = diff_profiles(before, after)
+        self.assertEqual(len(changes), 1)
+        self.assertEqual(changes[0]["field"], "roles.Styrets leder")
+        self.assertEqual(changes[0]["previous"], "Daglig leder")
+        self.assertEqual(changes[0]["current"], "Styrets leder")
+
+    def test_an_entity_role_is_detected(self):
+        before = profile(
+            roles=[{"entity_name": "Gammel Revisjon AS", "role": "Revisor"}]
+        )
+        after = profile(
+            roles=[{"entity_name": "Ny Revisjon AS", "role": "Revisor"}]
+        )
+        changes = diff_profiles(before, after)
+        self.assertEqual(len(changes), 2)
+        self.assertEqual({c["field"] for c in changes}, {"roles.Revisor"})
+        self.assertEqual(
+            {c["note"] for c in changes},
+            {"role no longer held", "role newly held"},
+        )
+
+
+class ProductionFinancialTests(unittest.TestCase):
+    """The builder writes net_result/total_equity/operating_result."""
+
+    def test_net_result_change_is_reported(self):
+        before = profile(
+            financials=[{"fiscal_year": "2025", "net_result": 10.0}]
+        )
+        after = profile(
+            financials=[{"fiscal_year": "2025", "net_result": 12.0}]
+        )
+        changes = diff_profiles(before, after)
+        self.assertEqual(len(changes), 1)
+        self.assertEqual(changes[0]["field"], "financials.2025.net_result")
+        self.assertEqual(changes[0]["previous"], 10.0)
+        self.assertEqual(changes[0]["current"], 12.0)
+
+    def test_total_equity_change_is_reported(self):
+        before = profile(
+            financials=[{"fiscal_year": "2025", "total_equity": 100.0}]
+        )
+        after = profile(
+            financials=[{"fiscal_year": "2025", "total_equity": 140.0}]
+        )
+        changes = diff_profiles(before, after)
+        self.assertEqual(len(changes), 1)
+        self.assertEqual(changes[0]["field"], "financials.2025.total_equity")
+
+    def test_operating_result_change_is_reported(self):
+        before = profile(
+            financials=[{"fiscal_year": "2025", "operating_result": 8.0}]
+        )
+        after = profile(
+            financials=[{"fiscal_year": "2025", "operating_result": 9.0}]
+        )
+        changes = diff_profiles(before, after)
+        self.assertEqual(len(changes), 1)
+        self.assertEqual(
+            changes[0]["field"], "financials.2025.operating_result"
+        )
+
+    def test_legacy_net_profit_still_compares_as_net_result(self):
+        before = profile(
+            financials=[{"fiscal_year": "2025", "net_profit": 10.0}]
+        )
+        after = profile(
+            financials=[{"fiscal_year": "2025", "net_profit": 12.0}]
+        )
+        changes = diff_profiles(before, after)
+        self.assertEqual(len(changes), 1)
+        self.assertEqual(changes[0]["field"], "financials.2025.net_result")
+
+
 class FinancialTests(unittest.TestCase):
     def test_a_new_filing_year_is_an_addition(self):
         after = profile(

@@ -28,6 +28,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import threading
 from dataclasses import dataclass
 from typing import Any
 
@@ -40,10 +41,32 @@ from src.request_tracker import request_tracker
 DEFAULT_BASE_URL = "https://integrate.api.nvidia.com/v1"
 
 # Trained explicitly for structured output per NVIDIA's model cards.
-DEFAULT_MODEL = "nvidia/nemotron-3-super-120b-a12b"
+#
+# The previous default, nemotron-3-super-120b-a12b, began answering 404
+# ("Function ... not found for account") on 2026-10-20 while still being
+# listed by /v1/models, which cost a forty-five minute run. This one was
+# verified against the extraction payload the same day: valid JSON on the
+# first try, correct quotes, and 6.1-6.6 seconds per call.
+DEFAULT_MODEL = "nvidia/nemotron-3.5-super-vl-120b-a12b"
 
 DEFAULT_TIMEOUT = 120
 DEFAULT_MAX_TOKENS = 8_000
+
+# Optional ceiling on calls in flight. The default matches the worker
+# count, because the limiter already paces starts and capping lower than
+# the response time requires throttles throughput: at four in flight, a
+# sixteen-second response caps the run near fifteen calls a minute, half
+# the configured pace. Lower `NVIDIA_CONCURRENCY` only if bursts draw
+# 429s that persist after the rate-limit backoff.
+def _concurrency() -> int:
+    try:
+        return max(1, int(os.environ.get("NVIDIA_CONCURRENCY", "8")))
+    except ValueError:
+        return 8
+
+
+MAX_CONCURRENT_CALLS = _concurrency()
+_call_slots = threading.BoundedSemaphore(MAX_CONCURRENT_CALLS)
 
 _FENCE = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.DOTALL | re.IGNORECASE)
 
@@ -192,12 +215,13 @@ class OpenAICompatibleBackend:
                 # hitting it wastes the call that trips it.
                 self.rate_limiter.acquire()
                 request_tracker.record()
-                response = requests.post(
-                    url,
-                    headers=headers,
-                    json=payload,
-                    timeout=self.timeout,
-                )
+                with _call_slots:
+                    response = requests.post(
+                        url,
+                        headers=headers,
+                        json=payload,
+                        timeout=self.timeout,
+                    )
 
                 if response.status_code in (401, 403):
                     raise Refused(
@@ -212,10 +236,13 @@ class OpenAICompatibleBackend:
                     )
                 if response.status_code == 429:
                     # NVIDIA does not send Retry-After, and publishes no
-                    # per-model limits, so back off conservatively.
+                    # per-model limits, so back off conservatively. The
+                    # one- and two-second waits used elsewhere land in
+                    # the same window and burn the attempt; a 429 needs
+                    # long enough for the window to turn over.
                     last_error = CallFailed("rate limited (429)")
                     if attempt < 2:
-                        time.sleep(RETRY_BACKOFF_SECONDS * (attempt + 2))
+                        time.sleep(5.0 * (attempt + 1))
                         continue
                     raise last_error
 

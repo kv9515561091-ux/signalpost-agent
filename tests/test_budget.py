@@ -152,6 +152,55 @@ class SmoothDivisionTests(unittest.TestCase):
         self.assertEqual(budget.reserved, 3)
         self.assertEqual(budget.remaining, 47)
 
+    def test_sync_releases_a_reservation_the_tracker_consumed(self):
+        # A reservation is a promise of requests not yet made. Once they
+        # are made, holding the promise as well as the spend counts the
+        # same requests twice.
+        from src.request_tracker import RequestTracker
+
+        tracker = RequestTracker(100)
+        tracker.count = 50
+
+        budget = RequestBudget.from_tracker(tracker)
+        budget.commit(5)
+        self.assertEqual(budget.remaining, 45)
+
+        for _ in range(5):
+            tracker.record()
+        budget.sync(tracker)
+
+        self.assertEqual(budget.reserved, 0)
+        self.assertEqual(budget.remaining, 45)
+
+    def test_a_long_run_does_not_strand_reservations(self):
+        """The failure this guards: enrichment dying at company 57 of 100.
+
+        Every company is granted pages and then spends more than the
+        grant. If the grant is never released, the budget drains at
+        roughly double rate and ``registry_only()`` trips with hundreds
+        of requests still unspent -- the tail is published as registry
+        spines while the run looks healthy.
+        """
+        from src.request_tracker import RequestTracker
+
+        tracker = RequestTracker(2000)
+        budget = RequestBudget.from_tracker(tracker, protected=300)
+
+        companies_left = 100
+        for _ in range(60):
+            budget.sync(tracker)
+            allowed = budget.pages_allowed(14, 17, companies_left)
+            budget.commit(allowed)
+            companies_left -= 1
+            for _ in range(17):
+                tracker.record()
+
+        budget.sync(tracker)
+
+        self.assertEqual(budget.reserved, 0)
+        self.assertEqual(budget.remaining, 2000 - 1020)
+        self.assertFalse(budget.registry_only())
+
     def test_even_distribution_beats_concentration(self):
         """Coverage is scored per company, so spreading wins."""
         budget = RequestBudget(100)

@@ -331,10 +331,15 @@ class JsonFallbackTests(unittest.TestCase):
         limited = MagicMock(status_code=429, text="slow down")
         post = MagicMock(return_value=limited)
         with patch("src.llm_openai.requests.post", post):
-            with patch("src.llm_openai.time.sleep"):
+            with patch("src.llm_openai.time.sleep") as sleep:
                 with self.assertRaises(CallFailed):
                     backend.complete_text(system="s", user="u")
         self.assertEqual(post.call_count, 3, "should retry before giving up")
+        self.assertEqual(
+            [call.args[0] for call in sleep.call_args_list],
+            [5.0, 10.0],
+            "a rate-limit window is longer than the usual retry pause",
+        )
 
     def test_empty_content_is_a_failure(self):
         backend = self._backend()

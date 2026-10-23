@@ -19,6 +19,8 @@ from src.agent import (
 )
 from src.batch import (
     DEFAULT_DELAY_SECONDS,
+    MAX_WORKERS,
+    default_workers,
     load_company_numbers,
     process_companies,
     summarise,
@@ -114,7 +116,19 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="SECONDS",
         help=(
             "Pause between companies. This is not the LLM rate limit; "
-            "model calls are paced separately."
+            "model calls are paced separately. Ignored when --workers "
+            "is above one."
+        ),
+    )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=default_workers(),
+        metavar="N",
+        help=(
+            "Profile N companies concurrently (default from AGENT_WORKERS, "
+            f"else 1; max {MAX_WORKERS}). Results stay in input order and "
+            "the request ceiling is still enforced across all workers."
         ),
     )
     return parser
@@ -183,6 +197,8 @@ def main(argv: list[str] | None = None) -> int:
                 f"  caps: {args.max_sources} sources, {args.max_pages} pages, "
                 f"{args.max_crawl_links} crawl links per company"
             )
+        if args.workers > 1:
+            print(f"  concurrency: {args.workers} companies at once")
 
     def report(index: int, total: int, raw: str, record: dict) -> None:
         if "error" in record:
@@ -210,6 +226,7 @@ def main(argv: list[str] | None = None) -> int:
         max_pages=args.max_pages,
         max_crawl_links=args.max_crawl_links,
         resume=args.resume,
+        workers=args.workers,
         progress=report,
     )
 

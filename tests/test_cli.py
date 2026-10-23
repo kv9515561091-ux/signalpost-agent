@@ -127,7 +127,7 @@ class ParityTests(unittest.TestCase):
 
         self.assertEqual(
             self._flags(run_batch.build_parser()) - self._flags(single()),
-            {"--input", "--output", "--delay", "--resume"},
+            {"--input", "--output", "--delay", "--resume", "--workers"},
         )
 
     def test_single_only_flags_are_deliberate(self):
@@ -152,6 +152,38 @@ class ParityTests(unittest.TestCase):
             .max_crawl_links,
             0,
         )
+
+
+class DailyCommandTests(unittest.TestCase):
+    """The organizer runs one command against their own company file."""
+
+    def test_daily_parser_accepts_a_file_and_keyless_mode(self):
+        import run_daily
+
+        args = run_daily.build_parser().parse_args(
+            ["--input", "companies.txt", "--output", "out.json", "--keyless"]
+        )
+        self.assertEqual(args.input, "companies.txt")
+        self.assertEqual(args.output, "out.json")
+        self.assertTrue(args.keyless)
+
+    def test_daily_help_does_not_require_a_file(self):
+        import run_daily
+
+        with self.assertRaises(SystemExit) as ctx:
+            run_daily.build_parser().parse_args(["--help"])
+        self.assertEqual(ctx.exception.code, 0)
+
+    def test_daily_defaults_are_the_competition_paths(self):
+        import os
+
+        import run_daily
+
+        with patch.dict(os.environ, {}, clear=True):
+            args = run_daily.build_parser().parse_args([])
+        self.assertEqual(args.input, run_daily.COMPETITION_INPUT)
+        self.assertEqual(args.output, run_daily.COMPETITION_OUTPUT)
+        self.assertFalse(args.keyless)
 
 
 class StreamingOutputTests(unittest.TestCase):

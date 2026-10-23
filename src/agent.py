@@ -20,6 +20,8 @@ Pipeline::
 
 from __future__ import annotations
 
+import os
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -35,6 +37,8 @@ from src.financials import get_financials
 from src.identity import CompanyIdentity
 from src.orgnumber import InvalidCompanyNumber, normalize, validate
 from src.roles import get_roles
+from src.social import is_social_url
+from src.website import collect_social_links, verify_registered_page
 
 __all__ = [
     "CompanyProfile",
@@ -150,6 +154,10 @@ class CompanyProfile(BaseModel):
 
     # Contact
     website: str | None = None
+    registered_website: str | None = None
+    website_verified: bool | None = None
+    website_verification: dict[str, Any] | None = None
+    social_links: list[dict[str, Any]] = Field(default_factory=list)
     phone: str | None = None
     email: str | None = None
 
@@ -578,6 +586,119 @@ DEFAULT_MAX_PAGES = 14
 DEFAULT_MAX_CRAWL_LINKS = _DEFAULT_MAX_CRAWL_LINKS
 
 
+def _merge_social_links(profile: CompanyProfile, links: list[dict]) -> None:
+    seen = {
+        (str(link.get("platform") or ""), str(link.get("handle") or "").lower())
+        for link in profile.social_links
+    }
+    for link in links:
+        key = (
+            str(link.get("platform") or ""),
+            str(link.get("handle") or "").lower(),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        profile.social_links.append(link)
+
+
+def _drop_registered_website_source(
+    profile: CompanyProfile,
+    website: str,
+) -> None:
+    """Remove a registry-seeded site that failed first-party verification."""
+    urls = {website.rstrip("/")}
+    if not website.startswith(("http://", "https://")):
+        urls.add(f"https://{website}".rstrip("/"))
+    profile.web_sources = [
+        source
+        for source in profile.web_sources
+        if source.identity_basis != "registered_website"
+    ]
+    profile.sources = [
+        url for url in profile.sources if url.rstrip("/") not in urls
+    ]
+
+
+def _apply_registered_website(
+    profile: CompanyProfile,
+    identity: CompanyIdentity,
+) -> None:
+    """Check the registry-listed website without using a model.
+
+    Keyless runs still need a trustworthy ``website`` value. Brreg's URL
+    is a candidate, not proof: it may be a parent group or brand site, so
+    it is fetched and accepted only when the page carries the company's
+    organization number or exact registered name.
+    """
+    website = (identity.registered_website or "").strip()
+    if not website:
+        return
+
+    url = website if website.startswith(("http://", "https://")) else f"https://{website}"
+    from src.http import HostRefused
+    from src.page import UnsafeUrl, fetch_page
+
+    try:
+        page = fetch_page(url)
+    except UnsafeUrl as exc:
+        profile.website_verified = False
+        profile.website_verification = {
+            "url": website,
+            "verified": False,
+            "basis": "not_checked",
+            "error": f"blocked ({exc})",
+        }
+        profile.retrieval_errors.append(
+            f"registered website {website}: blocked ({exc})"
+        )
+        _drop_registered_website_source(profile, website)
+        return
+    except HostRefused as exc:
+        profile.website_verified = False
+        profile.website_verification = {
+            "url": website,
+            "verified": False,
+            "basis": "not_checked",
+            "error": f"not requested ({exc})",
+        }
+        profile.retrieval_errors.append(
+            f"registered website {website}: not requested ({exc})"
+        )
+        _drop_registered_website_source(profile, website)
+        return
+    except Exception as exc:  # noqa: BLE001
+        detail = _describe_fetch_failure(exc)
+        profile.website_verified = False
+        profile.website_verification = {
+            "url": website,
+            "verified": False,
+            "basis": "not_checked",
+            "error": detail,
+        }
+        profile.retrieval_errors.append(
+            f"registered website {website}: {detail}"
+        )
+        _drop_registered_website_source(profile, website)
+        return
+
+    check = verify_registered_page(identity, page)
+    profile.website_verified = check.verified
+    profile.website_verification = check.as_dict()
+    if not check.verified:
+        profile.retrieval_errors.append(
+            f"registered website {website}: page does not carry this "
+            "company's organization number or exact name; not used as a "
+            "first-party source"
+        )
+        _drop_registered_website_source(profile, website)
+        return
+
+    profile.website = identity.registered_website
+    profile.sources = list(dict.fromkeys([*profile.sources, page.url]))
+    _merge_social_links(profile, collect_social_links(identity, page))
+
+
 def _apply_extraction(
     profile: CompanyProfile,
     identity: CompanyIdentity,
@@ -593,12 +714,16 @@ def _apply_extraction(
     it claims to come from. Anything else is refused and recorded.
 
     A verified first-party page may also enqueue a bounded set of
-    same-domain follow-ups. Those inherit the homepage's verification
-    rather than earning their own, which is why they are only ever planned
-    from a page whose domain the registry already vouched for.
+    same-domain follow-ups. Each follow-up is fetched and must itself
+    carry the target organization number or exact name before its text
+    is extracted, so a footer link cannot borrow the homepage's trust.
     """
     from src.crawl import plan_crawl
-    from src.extract import extract_from_page
+    from src.extract import (
+        MAX_BATCH_PAGES,
+        PageInput,
+        extract_from_pages,
+    )
     from src.http import HostRefused
     from src.page import UnsafeUrl, fetch_page
 
@@ -612,6 +737,7 @@ def _apply_extraction(
         # and cleaner provenance than its HTML. Re-fetching a registry
         # search page spends a request to recover data already held.
         and source.domain not in REGISTRY_DOMAINS_FOR_FETCH
+        and not is_social_url(source.url)
     ][:max_sources]
 
     if not candidates:
@@ -623,102 +749,176 @@ def _apply_extraction(
 
     fetched: set[str] = set()
     pages_read = 0
+    # Counted separately from ``pages_read`` because the ceiling has to
+    # bound attempts, not successes. A page that times out costs as much
+    # wall clock as one that loads, so capping only successes means a
+    # company whose sources mostly fail keeps pulling new URLs and can
+    # spend several times the intended budget. Measured on a degraded
+    # run: twenty companies at a fourteen-page ceiling made 939 requests.
+    attempts = 0
 
     # Carried across pages so the same statement from two directories is
     # published once.
     accepted_facts: list[ExtractedFact] = []
 
-    while queue and pages_read < max_pages:
-        source, is_seed = queue.pop(0)
+    def fill_batch() -> list[tuple[WebSource, Any]]:
+        """Fetch and plan the next batch of pages.
 
-        if source.url in fetched:
-            continue
+        Runs on the prefetch thread, so it is the only writer of the
+        queue and the attempt counter. The model call reads a finished
+        batch and touches none of that state.
+        """
+        nonlocal attempts, pages_read
+        batch: list[tuple[WebSource, Any]] = []
 
-        fetched.add(source.url)
+        # Fill one batch before calling the model. The page ceiling is
+        # checked between fetches, so a batch never pushes a company past
+        # it; a failed fetch just leaves a smaller batch.
+        while queue and len(batch) < MAX_BATCH_PAGES and attempts < max_pages:
+            source, is_seed = queue.pop(0)
 
-        try:
-            page = fetch_page(source.url)
-        except UnsafeUrl as exc:
-            profile.retrieval_errors.append(
-                f"page {source.domain}: blocked ({exc})"
+            if source.url in fetched:
+                continue
+
+            fetched.add(source.url)
+            attempts += 1
+
+            try:
+                page = fetch_page(source.url)
+            except UnsafeUrl as exc:
+                profile.retrieval_errors.append(
+                    f"page {source.domain}: blocked ({exc})"
+                )
+                continue
+            except HostRefused as exc:
+                # Recorded, not hidden: a skipped source is a gap in
+                # coverage and the profile should say where the gap came
+                # from.
+                profile.retrieval_errors.append(
+                    f"page {source.domain}: not requested ({exc})"
+                )
+                continue
+            except Exception as exc:  # noqa: BLE001
+                # Name the actual cause. "HTTPError" alone tells a reader
+                # nothing about whether to retry, switch model, or move
+                # on.
+                detail = _describe_fetch_failure(exc)
+                profile.retrieval_errors.append(
+                    f"page {source.domain}: {detail}"
+                )
+                continue
+
+            pages_read += 1
+
+            registered_domain = identity.registered_domain
+            on_registered_domain = bool(
+                registered_domain and source.domain == registered_domain
             )
-            continue
-        except HostRefused as exc:
-            # Recorded, not hidden: a skipped source is a gap in coverage
-            # and the profile should say where the gap came from.
-            profile.retrieval_errors.append(
-                f"page {source.domain}: not requested ({exc})"
-            )
-            continue
-        except Exception as exc:  # noqa: BLE001
-            # Name the actual cause. "HTTPError" alone tells a reader
-            # nothing about whether to retry, switch model, or move on.
-            detail = _describe_fetch_failure(exc)
-            profile.retrieval_errors.append(
-                f"page {source.domain}: {detail}"
-            )
-            continue
 
-        pages_read += 1
+            if source.identity_basis == "registered_website":
+                check = verify_registered_page(identity, page)
+                profile.website_verified = check.verified
+                profile.website_verification = check.as_dict()
+                if not check.verified:
+                    profile.retrieval_errors.append(
+                        f"registered website {source.domain}: page does "
+                        "not carry this company's organization number or "
+                        "exact name; not used as a first-party source"
+                    )
+                    profile.website = None
+                    profile.web_sources = [
+                        item
+                        for item in profile.web_sources
+                        if item.url != source.url
+                    ]
+                    profile.sources = [
+                        url for url in profile.sources if url != source.url
+                    ]
+                    continue
+                profile.website = identity.registered_website
+                _merge_social_links(
+                    profile,
+                    collect_social_links(identity, page),
+                )
+            elif not is_seed and on_registered_domain:
+                check = verify_registered_page(identity, page)
+                if not check.verified:
+                    profile.retrieval_errors.append(
+                        f"page {source.domain}: follow-up omitted because "
+                        "it does not carry this company's organization "
+                        "number or exact name"
+                    )
+                    continue
 
-        # Follow-ups, planned only from a seed on the registered domain.
-        # Comparing against the *identity's* domain rather than trusting
-        # the source's is the point: a source that somehow claimed to be
-        # on the registered domain must not be able to grant that to the
-        # pages it links to.
-        #
-        # ``pages_read`` is not yet the cap on queue size, so the walk is
-        # bounded by the remaining page budget below.
-        registered_domain = identity.registered_domain
-
-        if is_seed and registered_domain and source.domain == registered_domain:
-            for url in plan_crawl(
-                source.url,
-                page.links,
-                source.domain,
-                max_links=max_crawl_links,
-                already_seen=fetched,
-            ):
-                queue.append(
-                    (
+            # Follow-ups, planned only from a seed on the registered
+            # domain. Comparing against the *identity's* domain rather
+            # than trusting the source's is the point: a source that
+            # somehow claimed to be on the registered domain must not be
+            # able to grant that to the pages it links to.
+            #
+            # ``attempts`` is not yet the cap on queue size, so the walk
+            # is bounded by the remaining page budget below.
+            if is_seed and on_registered_domain and source.domain:
+                for url in plan_crawl(
+                    source.url,
+                    page.links,
+                    source.domain,
+                    max_links=max_crawl_links,
+                    already_seen=fetched,
+                ):
+                    queue.append(
+                        (
+                            WebSource(
+                                url=url,
+                                domain=source.domain,
+                                tier=source.tier,
+                                source_type=source.source_type,
+                                # The basis records how the domain was
+                                # found; the page is still re-checked
+                                # below before it can publish facts.
+                                confidence=source.confidence,
+                                identity_basis=f"{source.identity_basis}+same_domain",
+                                identity_signals=dict(source.identity_signals),
+                                retrieved_at=page.retrieved_at,
+                            ),
+                            False,
+                        )
+                    )
+                    profile.web_sources.append(
                         WebSource(
                             url=url,
                             domain=source.domain,
                             tier=source.tier,
                             source_type=source.source_type,
-                            # Inherited, not re-earned: the domain was
-                            # already verified, so the ceiling is the
-                            # homepage's.
                             confidence=source.confidence,
                             identity_basis=f"{source.identity_basis}+same_domain",
                             identity_signals=dict(source.identity_signals),
                             retrieved_at=page.retrieved_at,
-                        ),
-                        False,
+                        )
                     )
-                )
-                profile.web_sources.append(
-                    WebSource(
-                        url=url,
-                        domain=source.domain,
-                        tier=source.tier,
-                        source_type=source.source_type,
-                        confidence=source.confidence,
-                        identity_basis=f"{source.identity_basis}+same_domain",
-                        identity_signals=dict(source.identity_signals),
-                        retrieved_at=page.retrieved_at,
-                    )
-                )
 
-        report = extract_from_page(
-            page_text=page.text,
-            source_url=page.url,
-            retrieved_at=page.retrieved_at,
+            batch.append((source, page))
+
+        return batch
+
+    def read_batch(batch: list[tuple[WebSource, Any]]) -> None:
+        """Send one batch to the model and publish what it proves."""
+        # One call for up to two pages. Reports come back in batch
+        # order, each carrying its own source URL and refusals.
+        reports = extract_from_pages(
+            [
+                PageInput(
+                    page_text=page.text,
+                    source_url=page.url,
+                    retrieved_at=page.retrieved_at,
+                    tier=source.tier,
+                    source_type=source.source_type,
+                    title=page.title,
+                )
+                for source, page in batch
+            ],
             company_number=identity.company_number,
             company_name=identity.name,
-            tier=source.tier,
-            source_type=source.source_type,
-            title=page.title,
             # Values Brreg already published, so a directory reprinting
             # them is not mistaken for a new discovery.
             registry_values=(
@@ -730,31 +930,62 @@ def _apply_extraction(
             already_accepted=accepted_facts,
         )
 
-        for fact in report.facts:
-            accepted_facts.append(fact)
-            profile.facts.append(
-                FactRecord(
-                    field=fact.field,
-                    value=fact.value,
-                    source_url=fact.source_url,
-                    retrieved_at=fact.retrieved_at,
-                    evidence_text=fact.quote,
-                    confidence=fact.confidence,
-                    source_tier=fact.tier,
-                    source_type=fact.source_type,
-                    as_of=fact.published_date,
+        for (_source, page), report in zip(batch, reports, strict=True):
+            for fact in report.facts:
+                accepted_facts.append(fact)
+                profile.facts.append(
+                    FactRecord(
+                        field=fact.field,
+                        value=fact.value,
+                        source_url=fact.source_url,
+                        retrieved_at=fact.retrieved_at,
+                        evidence_text=fact.quote,
+                        confidence=fact.confidence,
+                        source_tier=fact.tier,
+                        source_type=fact.source_type,
+                        as_of=fact.published_date,
+                    )
                 )
-            )
 
-        if report.rejected:
-            profile.extraction_rejected.append(
-                {
-                    "source_url": source.url,
-                    "rejected": report.rejected,
-                }
-            )
-        if report.error and not report.llm_used:
-            profile.retrieval_errors.append(f"extraction: {report.error}")
+            if report.rejected:
+                profile.extraction_rejected.append(
+                    {
+                        "source_url": page.url,
+                        "rejected": report.rejected,
+                    }
+                )
+            if report.error and not report.llm_used:
+                profile.retrieval_errors.append(
+                    f"extraction: {report.error}"
+                )
+
+    # Fetch the next batch while the model reads the current one. A page
+    # walk waits on two independent resources -- the site's host and the
+    # model endpoint -- and overlapping them takes a fetch off the
+    # critical path instead of adding it to every batch. One prefetch
+    # thread per company: the fetch order is unchanged, and only the
+    # thread that owns the queue touches it.
+    #
+    # ``AGENT_PREFETCH=0`` keeps the serial walk; it exists so the
+    # overlap can be measured against itself on the same provider.
+    if os.environ.get("AGENT_PREFETCH", "1") == "0":
+        while True:
+            batch = fill_batch()
+            if not batch:
+                break
+            read_batch(batch)
+    else:
+        with ThreadPoolExecutor(max_workers=1) as prefetch:
+            upcoming = prefetch.submit(fill_batch)
+
+            while True:
+                batch = upcoming.result()
+                if not batch:
+                    break
+
+                # Start the next fetch before this call blocks on the model.
+                upcoming = prefetch.submit(fill_batch)
+                read_batch(batch)
 
     # A stage that is unavailable reports the same reason for every page;
     # repeating it once per attempt obscures the gaps that differ.
@@ -815,6 +1046,7 @@ def build_profile(
     *,
     include_web: bool = False,
     include_extraction: bool = False,
+    include_website_check: bool = False,
     include_narrative: bool = False,
     use_llm: bool = True,
     max_sources: int = DEFAULT_MAX_SOURCES,
@@ -831,6 +1063,10 @@ def build_profile(
         include_extraction: Read those sources and extract facts from
             them. Each fact must quote the page verbatim or it is
             refused. Requires ``include_web``.
+        include_website_check: Verify the registry-listed website by
+            fetching it and checking for the organization number or exact
+            name, without a model. Ignored when extraction already does
+            the same check.
         include_narrative: Add a written explanation. Falls back to a
             deterministic summary when no LLM is configured.
         use_llm: Whether to permit LLM calls at all. ``False`` forces
@@ -839,8 +1075,10 @@ def build_profile(
             with it, and past roughly six the marginal sources are
             mostly directories that add nothing the registry does not
             already say.
-        max_pages: Page-reading ceiling. Bounds both cost and rate-limit
-            pressure, since each page costs a model call.
+        max_pages: Page-fetch ceiling. Counts attempts rather than
+            successes, because a page that times out costs the same wall
+            clock as one that loads. Bounds both cost and rate-limit
+            pressure, since each page read costs a model call.
         max_crawl_links: Follow-ups read from a verified first-party
             page. Zero disables the crawl entirely, leaving the
             homepage-only behaviour.
@@ -919,7 +1157,8 @@ def build_profile(
         employee_count=company.get("employee_count"),
         employee_count_as_of=company.get("employee_count_as_of"),
 
-        website=company.get("website"),
+        website=None,
+        registered_website=company.get("website"),
         phone=company.get("phone"),
         email=company.get("email"),
 
@@ -965,6 +1204,9 @@ def build_profile(
                 max_pages=max_pages,
                 max_crawl_links=max_crawl_links,
             )
+
+    if include_website_check and not include_extraction:
+        _apply_registered_website(profile, identity)
 
     if include_narrative:
         profile.explanation = explain(profile, use_llm=use_llm).to_dict()

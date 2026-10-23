@@ -19,6 +19,7 @@ from src.agent import DEFAULT_MAX_PAGES, DEFAULT_MAX_SOURCES
 
 class FakeProfile:
     def __init__(self, **overrides):
+        self.facts = []
         self._data = {
             "company_number": "123456789",
             "company_name": "EXAMPLE AS",
@@ -64,6 +65,11 @@ class FlagPlumbingTests(unittest.TestCase):
         self.assertTrue(kw["include_web"])
         self.assertTrue(kw["include_extraction"])
         self.assertTrue(kw["include_narrative"])
+
+    def test_website_check_is_forwarded(self):
+        self._run(include_website_check=True)
+        _, kw = self.calls[0]
+        self.assertTrue(kw["include_website_check"])
 
     def test_no_llm_is_forwarded(self):
         self._run(include_web=True, use_llm=False)

@@ -276,6 +276,23 @@ def is_available() -> bool:
     return _selected_provider() is not None
 
 
+def is_explicitly_configured() -> bool:
+    """Whether credentials or a provider override were supplied.
+
+    ``is_available`` also falls back to a discoverable Anthropic SDK
+    profile. That is useful for the one-company CLI, but a batch command
+    must not mistake an installed SDK for a key: with nothing configured
+    it should run keyless rather than make a doomed model call.
+    """
+    override = (os.getenv("LLM_PROVIDER") or "").strip().lower()
+    if override in ("none", "off", "disabled"):
+        return False
+    if override in ("anthropic", "claude", "nvidia", "openai",
+                    "openai_compatible"):
+        return is_available()
+    return _anthropic_configured() or _openai_configured()
+
+
 def unavailable_reason() -> str | None:
     """Why no backend is usable, or ``None`` if one is."""
     if is_available():

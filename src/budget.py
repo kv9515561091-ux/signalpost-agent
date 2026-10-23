@@ -85,9 +85,24 @@ class RequestBudget:
         self.reserved = max(0, self.reserved + n)
 
     def sync(self, tracker) -> None:
-        """Adopt the tracker's spend without discarding reservations."""
+        """Adopt the tracker's spend, releasing what it has consumed.
+
+        A reservation is a promise of requests granted but not yet made.
+        Once the tracker observes them the promise is spent, and holding
+        it alongside the spend counts the same requests twice.
+
+        That is not a rounding error. A hundred-company run at the
+        measured eighteen requests per company drained the budget at
+        roughly double rate, and ``registry_only()`` tripped at company
+        fifty-seven -- the remaining forty-three were published as
+        registry spines while the tracker still showed several hundred
+        requests unspent. The failure is silent: those profiles are
+        valid, they simply carry no facts.
+        """
         self.limit = tracker.limit
-        self.used = tracker.count
+        observed = tracker.count
+        self.reserved = max(0, self.reserved - max(0, observed - self.used))
+        self.used = observed
 
     def exhausted(self) -> bool:
         return self.remaining <= 0

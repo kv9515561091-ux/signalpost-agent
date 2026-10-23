@@ -4,13 +4,16 @@ These exercise wiring and evidence attribution without network access.
 Live endpoint contracts are pinned separately in test_financials.py.
 """
 
+import os
 import unittest
 from contextlib import ExitStack
 from unittest.mock import MagicMock, patch
 
+from src import llm
 from src.agent import build_profile, reconcile_evidence, validate_company_number
 from src.evidence import Evidence
 from src.orgnumber import InvalidCompanyNumber
+from src.page import Page
 
 COMPANY = {
     "company_number": "989061593",
@@ -388,6 +391,47 @@ class WebEnrichmentTests(unittest.TestCase):
         self.assertEqual(profile.web_sources, [])
         self.discover.assert_not_called()
 
+    def test_keyless_website_check_accepts_an_exact_name_and_socials(self):
+        page = Page(
+            url="https://example.no/",
+            title="-G- GROUP AS",
+            text="Org.nr. 989 061 593",
+            retrieved_at="2026-10-13T10:00:02+00:00",
+            links=["https://www.linkedin.com/company/g-group/"],
+        )
+        with patch("src.page.fetch_page", return_value=page):
+            profile = build_profile(
+                "989061593", include_website_check=True
+            )
+        self.assertEqual(profile.website, "example.no")
+        self.assertTrue(profile.website_verified)
+        self.assertEqual(
+            profile.website_verification["basis"], "organization_number"
+        )
+        self.assertEqual(
+            profile.social_links[0]["handle"], "g-group"
+        )
+
+    def test_keyless_website_check_rejects_a_parent_page(self):
+        page = Page(
+            url="https://example.no/",
+            title="Some Other Group",
+            text="Welcome to our group.",
+            retrieved_at="2026-10-13T10:00:02+00:00",
+        )
+        with patch("src.page.fetch_page", return_value=page):
+            profile = build_profile(
+                "989061593", include_website_check=True
+            )
+        self.assertIsNone(profile.website)
+        self.assertFalse(profile.website_verified)
+        self.assertTrue(
+            any(
+                "registered website example.no" in error
+                for error in profile.retrieval_errors
+            )
+        )
+
     def test_verified_sources_are_attached_with_tier_and_basis(self):
         self.discover.return_value = [
             {
@@ -482,6 +526,191 @@ class WebEnrichmentTests(unittest.TestCase):
         )
         report = reconcile_evidence(profile.evidence)
         self.assertEqual([c for c in report if c["field"].startswith("role:")], [])
+
+
+class PageAttemptCeilingTests(unittest.TestCase):
+    """Failing pages count against the ceiling too.
+
+    Capping only successes lets a company whose sources mostly fail keep
+    pulling new URLs, which is how a twenty-company run at a fourteen
+    page ceiling once made 939 requests.
+    """
+
+    @staticmethod
+    def _source(index: int) -> dict:
+        return {
+            "url": f"https://source{index}.example.no/989061593",
+            "title": "-G- GROUP AS",
+            "domain": f"source{index}.example.no",
+            "tier": 2,
+            "source_type": "official_company_website",
+            "confidence": 0.9,
+            "identity_basis": "organization_number",
+            "identity_signals": {"org_number_in_url_path": True},
+            "query": '"989061593"',
+            "retrieved_at": "2026-10-13T10:00:03+00:00",
+        }
+
+    def test_failures_do_not_extend_the_walk(self):
+        attempted: list[str] = []
+
+        def always_fails(url):
+            attempted.append(url)
+            raise ConnectionError("connection reset")
+
+        with ExitStack() as stack:
+            stack.enter_context(patch("src.agent.get_company", return_value=COMPANY))
+            stack.enter_context(patch("src.agent.get_roles", return_value=ROLES))
+            stack.enter_context(
+                patch("src.agent.get_financials", return_value=FINANCIALS)
+            )
+            stack.enter_context(
+                patch(
+                    "src.agent.discover_sources",
+                    return_value=[self._source(i) for i in range(20)],
+                )
+            )
+            stack.enter_context(
+                patch("src.page.fetch_page", side_effect=always_fails)
+            )
+            profile = build_profile(
+                "989061593",
+                include_web=True,
+                include_extraction=True,
+                use_llm=False,
+                max_sources=20,
+                max_pages=3,
+            )
+
+        self.assertEqual(len(attempted), 3)
+        self.assertTrue(
+            all("page source" in e for e in profile.retrieval_errors),
+            profile.retrieval_errors,
+        )
+
+
+class BatchPageWalkTests(unittest.TestCase):
+    """Two verified pages are read in one extraction call."""
+
+    @staticmethod
+    def _source(index: int) -> dict:
+        return {
+            "url": f"https://source{index}.example.no/989061593",
+            "title": "-G- GROUP AS",
+            "domain": f"source{index}.example.no",
+            "tier": 2,
+            "source_type": "official_company_website",
+            "confidence": 0.9,
+            "identity_basis": "organization_number",
+            "identity_signals": {"org_number_in_url_path": True},
+            "query": '"989061593"',
+            "retrieved_at": "2026-10-13T10:00:03+00:00",
+        }
+
+    def _walk(self, prefetch: str | None = None):
+        calls: list[str] = []
+        payload = {
+            "facts": [
+                {
+                    "field": "business_summary",
+                    "value": "Investment company",
+                    "quote": (
+                        "We are a Norwegian investment company founded in "
+                        "2005."
+                    ),
+                    "published_date": "",
+                    "page": "p1",
+                },
+                {
+                    "field": "services",
+                    "value": "Accounting software",
+                    "quote": "Vi leverer programvare for regnskap og lønn.",
+                    "published_date": "",
+                    "page": "p2",
+                },
+            ]
+        }
+
+        def model(schema, *, system, user):
+            calls.append(user)
+            return llm.LLMResult(
+                data=payload,
+                model="m",
+                provider="openai_compatible",
+                finish_reason="stop",
+            )
+
+        def fetch(url):
+            body = (
+                "We are a Norwegian investment company founded in 2005."
+                if "source0" in url
+                else "Vi leverer programvare for regnskap og lønn."
+            )
+            return Page(
+                url=url,
+                title="About",
+                text=f"- G- GROUP AS\n{body}",
+                retrieved_at="2026-10-13T10:00:03+00:00",
+                links=[],
+            )
+
+        with ExitStack() as stack:
+            stack.enter_context(
+                patch("src.agent.get_company", return_value=COMPANY)
+            )
+            stack.enter_context(
+                patch("src.agent.get_roles", return_value=ROLES)
+            )
+            stack.enter_context(
+                patch("src.agent.get_financials", return_value=FINANCIALS)
+            )
+            stack.enter_context(
+                patch(
+                    "src.agent.discover_sources",
+                    return_value=[self._source(0), self._source(1)],
+                )
+            )
+            stack.enter_context(
+                patch("src.page.fetch_page", side_effect=fetch)
+            )
+            stack.enter_context(
+                patch("src.extract.llm.is_available", return_value=True)
+            )
+            stack.enter_context(
+                patch("src.extract.llm.complete_json", side_effect=model)
+            )
+            if prefetch is not None:
+                stack.enter_context(
+                    patch.dict(os.environ, {"AGENT_PREFETCH": prefetch})
+                )
+            profile = build_profile(
+                "989061593",
+                include_web=True,
+                include_extraction=True,
+                max_sources=2,
+                max_pages=2,
+            )
+
+        return calls, profile
+
+    def _assert_two_facts_from_both_pages(self, calls, profile):
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(len(profile.facts), 2)
+        self.assertEqual(
+            {fact.source_url for fact in profile.facts},
+            {
+                "https://source0.example.no/989061593",
+                "https://source1.example.no/989061593",
+            },
+        )
+
+    def test_two_pages_share_one_extraction_call(self):
+        calls, profile = self._walk()
+        self._assert_two_facts_from_both_pages(calls, profile)
+
+    def test_serial_walk_produces_the_same_profile(self):
+        calls, profile = self._walk("0")
+        self._assert_two_facts_from_both_pages(calls, profile)
 
 
 if __name__ == "__main__":

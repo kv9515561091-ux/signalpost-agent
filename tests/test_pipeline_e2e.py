@@ -68,6 +68,21 @@ def _sentence_candidates(text: str, limit: int = 4) -> list[str]:
     return out
 
 
+def _page_blocks(user: str) -> list[tuple[str, str]]:
+    """Split a batch prompt into (page id, page text) pairs.
+
+    A single-page prompt has no ``=== PAGE pN ===`` header, so this
+    returns nothing and the caller falls back to reading the whole
+    prompt.
+    """
+    blocks = []
+    for part in user.split("=== PAGE ")[1:]:
+        page_id, _, rest = part.partition(" ===")
+        _, marker, content = rest.partition("--- PAGE CONTENT ---")
+        blocks.append((page_id.strip(), content if marker else rest))
+    return blocks
+
+
 def _page_markup(entry: dict) -> str:
     """Rebuild a minimal page from recorded text and links.
 
@@ -301,7 +316,21 @@ def _run_enriched(**kwargs):
 
     def fake_complete_json(schema, *, system, user, **_):
         calls.append(user)
-        sentences = _sentence_candidates(user)
+        blocks = _page_blocks(user)
+        if blocks:
+            return _stub_result(
+                [
+                    {
+                        "field": "business_summary",
+                        "value": sentence,
+                        "quote": sentence,
+                        "published_date": None,
+                        "page": page_id,
+                    }
+                    for page_id, text in blocks
+                    for sentence in _sentence_candidates(text)
+                ]
+            )
         return _stub_result(
             [
                 {
@@ -310,7 +339,7 @@ def _run_enriched(**kwargs):
                     "quote": sentence,
                     "published_date": None,
                 }
-                for sentence in sentences
+                for sentence in _sentence_candidates(user)
             ]
         )
 

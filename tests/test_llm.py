@@ -67,6 +67,29 @@ class ProviderSelectionTests(unittest.TestCase):
             with self._env():
                 self.assertEqual(llm.provider_name(), "anthropic")
 
+    def test_discoverable_profile_is_not_explicit_configuration(self):
+        # run_daily must stay keyless on a machine where the Anthropic
+        # SDK is installed but no key was supplied.
+        sdk = anthropic_sdk(anthropic_response())
+        with patch.object(llm, "_anthropic_sdk", sdk):
+            with self._env():
+                self.assertTrue(llm.is_available())
+                self.assertFalse(llm.is_explicitly_configured())
+
+    def test_nvidia_key_is_explicit_configuration(self):
+        sdk = anthropic_sdk(anthropic_response())
+        with patch.object(llm, "_anthropic_sdk", sdk):
+            with self._env(NVIDIA_API_KEY="nvapi-x"):
+                self.assertTrue(llm.is_explicitly_configured())
+
+    def test_provider_override_is_explicit_configuration(self):
+        sdk = anthropic_sdk(anthropic_response())
+        with patch.object(llm, "_anthropic_sdk", sdk):
+            with self._env(LLM_PROVIDER="anthropic"):
+                self.assertTrue(llm.is_explicitly_configured())
+            with self._env(LLM_PROVIDER="none"):
+                self.assertFalse(llm.is_explicitly_configured())
+
     def test_no_credentials_and_no_sdk_is_unavailable(self):
         with patch.object(
             llm, "_anthropic_sdk", side_effect=llm.LLMUnavailable("no sdk")

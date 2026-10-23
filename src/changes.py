@@ -206,8 +206,17 @@ def _roles_by_name(profile: dict[str, Any]) -> dict[str, str]:
     for record in profile.get("roles") or []:
         if not isinstance(record, dict):
             continue
-        name = str(record.get("name") or "").strip()
-        role = str(record.get("role_label") or record.get("role") or "").strip()
+        # Profiles written by the builder use ``person_name`` for people
+        # and ``entity_name`` for organisations (auditors, accountants).
+        # Older profiles and fixtures used ``name``. Accept all three so
+        # a rename in either direction cannot silently disable detection.
+        name = str(
+            record.get("person_name")
+            or record.get("name")
+            or record.get("entity_name")
+            or ""
+        ).strip()
+        role = str(record.get("role") or record.get("role_label") or "").strip()
         if name and role:
             out[name] = role
     return out
@@ -264,10 +273,28 @@ def _diff_financials(
     return changes
 
 
-_FIGURES = (
-    "revenue", "operating_profit", "profit_before_tax", "net_profit",
-    "total_assets", "total_liabilities", "equity", "operating_costs",
+# Canonical profile field name paired with the spellings it has used.
+# The builder writes ``operating_result``/``net_result``/``total_equity``;
+# the aliases keep older profiles and handwritten fixtures comparable.
+# The canonical name is what a change record reports.
+_FIGURES: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("revenue", ("revenue",)),
+    ("operating_result", ("operating_result", "operating_profit")),
+    ("profit_before_tax", ("profit_before_tax",)),
+    ("net_result", ("net_result", "net_profit")),
+    ("total_assets", ("total_assets",)),
+    ("total_liabilities", ("total_liabilities",)),
+    ("total_equity", ("total_equity", "equity")),
+    ("operating_costs", ("operating_costs",)),
 )
+
+
+def _first_present(record: dict[str, Any], names: tuple[str, ...]) -> Any:
+    for name in names:
+        value = record.get(name)
+        if value is not None:
+            return value
+    return None
 
 
 def _financials_by_year(profile: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -278,7 +305,10 @@ def _financials_by_year(profile: dict[str, Any]) -> dict[str, dict[str, Any]]:
         year = str(record.get("fiscal_year") or "")
         if not year:
             continue
-        out[year] = {m: record.get(m) for m in _FIGURES}
+        out[year] = {
+            canonical: _first_present(record, aliases)
+            for canonical, aliases in _FIGURES
+        }
     return out
 
 

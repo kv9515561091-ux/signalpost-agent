@@ -22,14 +22,19 @@ import contextlib
 import json
 import os
 import tempfile
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
+from src import yieldcache
 from src.agent import (
     DEFAULT_MAX_CRAWL_LINKS,
     DEFAULT_MAX_PAGES,
     DEFAULT_MAX_SOURCES,
+    CompanyProfile,
     build_profile,
 )
 from src.budget import REGISTRY_REQUESTS_PER_COMPANY, RequestBudget
@@ -38,6 +43,28 @@ from src.orgnumber import InvalidCompanyNumber
 from src.request_tracker import request_tracker
 
 DEFAULT_DELAY_SECONDS = 0.4
+
+# Companies are independent, and the wall clock is scored: a fully
+# enriched company measured ~156 seconds, so a hundred sequentially is
+# over four hours against a forty-five minute budget. One worker keeps
+# the original sequential behaviour and is the default, because
+# concurrency is the kind of change that should be opted into.
+DEFAULT_WORKERS = 1
+MAX_WORKERS = 16
+
+
+def default_workers(fallback: int = DEFAULT_WORKERS) -> int:
+    """The configured worker count, from ``AGENT_WORKERS`` or ``fallback``."""
+    raw = (os.getenv("AGENT_WORKERS") or "").strip()
+    if not raw:
+        return fallback
+
+    try:
+        value = int(raw)
+    except ValueError:
+        return fallback
+
+    return max(1, min(MAX_WORKERS, value))
 
 # Suffix for the sidecar recording which companies are finished and
 # under which settings. Kept out of the results file so that file stays
@@ -54,10 +81,19 @@ def load_company_numbers(input_file: str = "data/company_numbers.txt") -> list[s
     if not path.exists():
         return []
     return [
-        line.strip()
-        for line in path.read_text(encoding="utf-8").splitlines()
+        line.strip().lstrip("\ufeff")
+        for line in path.read_text(encoding="utf-8-sig").splitlines()
         if line.strip()
     ]
+
+
+def _fact_hosts(profile: CompanyProfile) -> set[str]:
+    """Hosts that produced at least one fact, for the yield cache."""
+    return {
+        urlparse(fact.source_url).netloc
+        for fact in profile.facts
+        if fact.source_url
+    }
 
 
 def mode_signature(
@@ -66,6 +102,7 @@ def mode_signature(
     include_extraction: bool,
     include_narrative: bool,
     use_llm: bool,
+    include_website_check: bool = False,
     max_sources: int,
     max_pages: int,
     max_crawl_links: int,
@@ -83,6 +120,8 @@ def mode_signature(
         modes.append("web")
     if include_extraction:
         modes.append("extract")
+    if include_website_check and not include_extraction:
+        modes.append("website")
     if include_narrative:
         modes.append("narrate")
     if use_llm:
@@ -197,6 +236,31 @@ def load_state(output_file: str, signature: str) -> tuple[list[dict], set[str]]:
     return results, completed
 
 
+def state_is_complete(
+    output_file: str, company_numbers: list[str]
+) -> bool:
+    """Whether the stored state marks every requested company complete.
+
+    Used by the daily command to tell two situations apart. An
+    interrupted run has unfinished companies, so resuming is right. A
+    finished run has none, and re-running it must not skip every company
+    -- the daily test re-runs the same list to find real changes, and
+    skipping would report a quiet day no matter what the registry said.
+    """
+    path = _state_path(output_file)
+
+    try:
+        state = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+
+    completed = {
+        str(number) for number in state.get("completed", []) if number
+    }
+    wanted = {str(number) for number in company_numbers}
+    return bool(wanted) and wanted.issubset(completed)
+
+
 def _load_history(
     output_file: str, signature: str
 ) -> dict[str, dict[str, Any]]:
@@ -238,12 +302,15 @@ def process_companies(
     *,
     include_web: bool = False,
     include_extraction: bool = False,
+    include_website_check: bool = False,
     include_narrative: bool = False,
     use_llm: bool = True,
     max_sources: int = DEFAULT_MAX_SOURCES,
     max_pages: int = DEFAULT_MAX_PAGES,
     max_crawl_links: int = DEFAULT_MAX_CRAWL_LINKS,
     resume: bool = False,
+    workers: int = DEFAULT_WORKERS,
+    deadline: float | None = None,
     progress=None,
 ) -> list[dict[str, Any]]:
     """Build a profile for each org number and persist the results.
@@ -252,6 +319,8 @@ def process_companies(
         include_web: Discover and verify public sources per company.
         include_extraction: Extract quote-backed facts from those
             sources. Implies ``include_web``.
+        include_website_check: Verify the registry-listed website with a
+            page fetch, without a model. Ignored with extraction.
         include_narrative: Add a written explanation per company.
         use_llm: Whether LLM calls are permitted at all. ``False`` forces
             deterministic behaviour even with credentials present, which
@@ -263,8 +332,17 @@ def process_companies(
         resume: Reuse completed companies from a previous run under the
             same settings. Companies that errored are retried, since a
             transient failure should not be permanent.
+        workers: Companies profiled concurrently. ``1`` keeps the
+            sequential behaviour. Results stay in input order regardless,
+            and the request ceiling is still enforced process-wide.
+        deadline: ``time.monotonic()`` value after which companies stop
+            being enriched and are built from the registry alone. They
+            are still profiled and still appear in the output, so the
+            company list is complete even when the clock is not.
         progress: Optional callback ``(index, total, raw, record)`` for
-            per-company reporting.
+            per-company reporting. With concurrency, calls arrive in
+            completion order and ``index`` is the company's input
+            position.
 
     Note:
         The inter-company delay is *not* sufficient rate limiting once
@@ -272,14 +350,23 @@ def process_companies(
         calls in quick succession. Those are paced by the LLM limiter,
         which is why it matters that the batch reuses the same process.
     """
+    workers = max(1, min(MAX_WORKERS, workers))
+
     # Extraction reads pages, so it cannot work without discovery.
     if include_extraction:
         include_web = True
+        include_website_check = False
+
+    # The yield cache sits beside the output it describes, so a fresh
+    # output starts with no history and two runs cannot share a lesson
+    # by accident.
+    yieldcache.use_default(Path(output_file).with_name("yield_cache.json"))
 
     signature = mode_signature(
         include_web=include_web,
         include_extraction=include_extraction,
         include_narrative=include_narrative,
+        include_website_check=include_website_check,
         use_llm=use_llm,
         max_sources=max_sources,
         max_pages=max_pages,
@@ -289,8 +376,20 @@ def process_companies(
     results: list[dict[str, Any]] = []
     completed: set[str] = set()
 
+    wanted = {
+        str(number).strip()
+        for number in company_numbers
+        if str(number).strip()
+    }
+
     if resume:
         results, completed = load_state(output_file, signature)
+        results = [
+            record
+            for record in results
+            if str(record.get("company_number", "")).strip() in wanted
+        ]
+        completed.intersection_update(wanted)
 
     # History is loaded whether or not --resume was asked for. --resume
     # decides whether to *skip* companies that are already done; it has
@@ -298,6 +397,18 @@ def process_companies(
     # time. Loading only under --resume meant an ordinary re-run
     # overwrote the very history that makes change detection possible.
     previous = _load_history(output_file, signature)
+
+    if not resume and previous:
+        # A refresh rewrites every profile, but an interrupted refresh
+        # must not erase the profiles it has not reached yet: keep the
+        # earlier record as a placeholder until its company is done.
+        # Otherwise one slow run costs the next run its history for the
+        # whole tail.
+        results = [
+            dict(record)
+            for number, record in previous.items()
+            if number in wanted
+        ]
 
     total = len(company_numbers)
     skipped = 0
@@ -323,45 +434,87 @@ def process_companies(
         request_tracker,
         protected=reserve,
     )
-    pending = [n.strip() for n in company_numbers if n.strip()]
-    pending = [n for n in pending if n not in completed]
-    # Walks down as each company is finished, so the divisor is the real
-    # number of companies still owed a profile.
-    companies_left = len(pending)
+    # The order the caller supplied, so concurrency cannot reorder the
+    # output file. A finished company is merged by number, not appended,
+    # and the list is then sorted back into input order.
+    order: dict[str, int] = {}
+    for position, number in enumerate(company_numbers):
+        cleaned = number.strip()
+        if cleaned:
+            order.setdefault(cleaned, position)
 
+    work: list[tuple[int, str]] = []
     for index, raw in enumerate(company_numbers, start=1):
-        raw = raw.strip()
-        if not raw:
+        cleaned = raw.strip()
+        if not cleaned:
             continue
-
-        if raw in completed:
+        if cleaned in completed:
             skipped += 1
             continue
+        work.append((index, cleaned))
 
-        time.sleep(delay)
+    # Productive companies first, unknown next, empty ones last. The
+    # daily constraint is wall clock, so if the run has to stop
+    # enriching, it should stop on the companies that produced nothing
+    # last time rather than on the ones that were paying. The sort is
+    # stable and the bands only reorder the queue: the output file is
+    # still written in input order.
+    work.sort(key=lambda item: yieldcache.priority(item[1]))
 
-        # The tracker is the authority on what has been spent; the budget
-        # re-reads it rather than counting separately, so the two cannot
-        # drift. Reservations carry over, or every company would be
-        # promised the same remaining slice.
-        run_budget.sync(request_tracker)
+    # Walks down as each company is *granted* its depth, not as it
+    # finishes. Under concurrency several companies are in flight at
+    # once, and the divisor has to be the number still owed a grant, or
+    # the in-flight ones get promised the same remainder twice.
+    companies_left = len(work)
 
-        # Depth for this company is whatever the budget can fairly
-        # afford, and enrichment stops entirely once only the registry
-        # reserve remains.
-        enrichment_allowed = not run_budget.registry_only()
-        affordable = run_budget.pages_allowed(
-            max_pages, PER_COMPANY_ENRICHMENT_COST, max(1, companies_left)
-        )
-        # Promised is spent. Debiting here is what stops the tail of the
-        # run from being granted the same remainder as the head.
-        run_budget.commit(affordable)
+    # Guards the budget grant and the result merge. Two acquisitions
+    # rather than one long hold: deciding a page count takes no time, and
+    # persistence must not keep a worker from starting its company.
+    state_lock = threading.Lock()
 
+    def run_one(
+        raw: str, index: int
+    ) -> tuple[int, str, dict[str, Any], str | None]:
+        nonlocal companies_left
+
+        depth = max_pages
+        if yieldcache.priority(raw) == yieldcache.PRIORITY_EMPTY:
+            # Same sources, fewer of them. The walk is tier-ordered, so
+            # the pages most likely to carry a fact are still read; this
+            # drops only the tail that produced nothing last time.
+            depth = min(depth, yieldcache.ZERO_YIELD_PAGES)
+
+        skip_reason: str | None = None
+        with state_lock:
+            # The tracker is the authority on what has been spent; the
+            # budget re-reads it rather than counting separately, so the
+            # two cannot drift.
+            run_budget.sync(request_tracker)
+
+            # Enrichment stops entirely once only the registry reserve
+            # remains, or once the promised time has run out. Either way
+            # the company is still built, so the output list stays whole.
+            if run_budget.registry_only():
+                skip_reason = "outbound request budget"
+            elif deadline is not None and time.monotonic() >= deadline:
+                skip_reason = "daily time budget"
+
+            enrichment_allowed = skip_reason is None
+            affordable = run_budget.pages_allowed(
+                depth, PER_COMPANY_ENRICHMENT_COST, max(1, companies_left)
+            )
+            # Promised is spent. Debiting here is what stops the tail of
+            # the run from being granted the same remainder as the head.
+            run_budget.commit(affordable)
+            companies_left = max(0, companies_left - 1)
+
+        profile = None
         try:
             profile = build_profile(
                 raw,
                 include_web=include_web and enrichment_allowed,
                 include_extraction=include_extraction and enrichment_allowed,
+                include_website_check=include_website_check and enrichment_allowed,
                 include_narrative=include_narrative and enrichment_allowed,
                 use_llm=use_llm,
                 max_sources=max_sources,
@@ -378,53 +531,108 @@ def process_companies(
                 "error": f"{type(exc).__name__}: {exc}",
             }
 
-        # Compared against whatever the last run stored for this company,
-        # before the new record replaces it. Done for failures too, so a
-        # company that stops erroring is reported as recovered.
-        record["changes"] = diff_profiles(previous.get(raw), record)
-        record["changes_summary"] = summarise_changes(record["changes"])
-
-        # A retried company replaces its earlier record rather than appending
-        # beside it, otherwise a company that failed once and then
-        # succeeded appears twice -- once as an error, once as a profile
-        # -- and the summary counts both.
-        if "error" not in record:
-            completed.add(raw)
-
         if (
-            not enrichment_allowed
+            profile is not None
+            and skip_reason is None
             and include_extraction
-            and "error" not in record
+            and affordable > 0
         ):
-            # Enrichment was asked for and not delivered. That is a
-            # materially different profile from one that was simply
-            # requested and completed, and a caller reading the output
-            # needs to be able to tell the two apart -- a run can
-            # otherwise produce hundreds of registry-only profiles
-            # while looking entirely healthy.
-            record.setdefault("retrieval_errors", []).append(
-                "enrichment skipped: the outbound request budget was "
-                "insufficient for this company"
+            # Only a company that was actually read teaches the cache
+            # anything. One skipped for the budget has no outcome, and
+            # recording a zero for it would poison the next run.
+            yieldcache.record(
+                raw,
+                facts=len(profile.facts),
+                domains=_fact_hosts(profile),
             )
 
-        results = [
-            existing
-            for existing in results
-            if existing.get("company_number") != raw
-        ]
-        results.append(record)
+        return index, raw, record, skip_reason
 
-        companies_left = max(0, companies_left - 1)
+    def finish(item: tuple[int, str, dict[str, Any], str | None]) -> None:
+        index, raw, record, skip_reason = item
 
-        _persist(output_file, results, completed, signature)
+        with state_lock:
+            # Compared against whatever the last run stored for this
+            # company, before the new record replaces it. Done for
+            # failures too, so a company that stops erroring is reported
+            # as recovered.
+            record["changes"] = diff_profiles(previous.get(raw), record)
+            record["changes_summary"] = summarise_changes(record["changes"])
+
+            # A retried company replaces its earlier record rather than
+            # appending beside it, otherwise a company that failed once
+            # and then succeeded appears twice -- once as an error, once
+            # as a profile -- and the summary counts both.
+            # A company that ran out of clock was not finished, whatever
+            # its record says. Marking it complete would make --resume
+            # skip it forever, turning one slow run into permanently
+            # shallow profiles for the tail.
+            if "error" not in record and skip_reason is None:
+                completed.add(raw)
+
+            if skip_reason is not None and include_extraction and "error" not in record:
+                # Enrichment was asked for and not delivered. That is a
+                # materially different profile from one that was simply
+                # requested and completed, and a caller reading the
+                # output needs to be able to tell the two apart -- a run
+                # can otherwise produce hundreds of registry-only
+                # profiles while looking entirely healthy. Naming the
+                # budget that ran out matters: a request ceiling and a
+                # clock are fixed by different things.
+                record.setdefault("retrieval_errors", []).append(
+                    f"enrichment skipped: the {skip_reason} was "
+                    "insufficient for this company"
+                )
+
+            results[:] = [
+                existing
+                for existing in results
+                if existing.get("company_number") != raw
+            ]
+            results.append(record)
+            results.sort(
+                key=lambda row: order.get(
+                    str(row.get("company_number")), len(order)
+                )
+            )
+
+            _persist(output_file, results, completed, signature)
 
         if progress is not None:
             progress(index, total, raw, record)
 
-    if not results:
-        # Still create the file, so an empty batch does not leave stale
-        # output from a previous run looking current.
-        _persist(output_file, results, completed, signature)
+    if workers <= 1:
+        for index, raw in work:
+            time.sleep(delay)
+            finish(run_one(raw, index))
+    else:
+        # The inter-company delay is dropped: with several companies in
+        # flight the requests are already spaced, and sleeping here would
+        # add forty seconds to a hundred-company run for nothing.
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = {
+                pool.submit(run_one, raw, index): (index, raw)
+                for index, raw in work
+            }
+            for future in as_completed(futures):
+                index, raw = futures[future]
+                try:
+                    item = future.result()
+                except Exception as exc:  # noqa: BLE001 - a worker that
+                    # dies unexpectedly must cost one company, not the
+                    # whole batch.
+                    item = (
+                        index,
+                        raw,
+                        {
+                            "company_number": raw,
+                            "error": f"{type(exc).__name__}: {exc}",
+                        },
+                        None,
+                    )
+                finish(item)
+
+    _persist(output_file, results, completed, signature)
 
     _ = skipped  # reported through the return value contract
     return results

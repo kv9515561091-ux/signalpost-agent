@@ -11,10 +11,14 @@ from unittest.mock import patch
 
 from src import llm
 from src.extract import (
+    BATCH_SYSTEM_PROMPT,
     EXTRACTABLE_FIELDS,
     EXTRACTION_SCHEMA,
+    MAX_BATCH_PAGE_CHARS,
     RESERVED_FIELDS,
+    PageInput,
     extract_from_page,
+    extract_from_pages,
     quote_exists,
     verify_candidate,
 )
@@ -423,6 +427,654 @@ class ExtractPipelineTests(unittest.TestCase):
                 )
         self.assertIn("refused", report.error)
         self.assertEqual(report.facts, [])
+
+
+NEWS_PAGE = """
+- G- GROUP AS
+Nyheter
+12. mars 2025
+G-Group kjopte Example AS.
+Sist oppdatert 13. mars 2025
+"""
+
+
+def news_candidate(
+    value="G-Group kjopte Example AS.",
+    quote="12. mars 2025\nG-Group kjopte Example AS.",
+    published_date="2025-03-12",
+):
+    return candidate(
+        field="recent_developments",
+        value=value,
+        quote=quote,
+        published_date=published_date,
+    )
+
+
+def verify_news(cand, *, page_text=NEWS_PAGE,
+                source_url="https://example.no/nyheter"):
+    return verify_candidate(
+        cand,
+        page_text=page_text,
+        source_url=source_url,
+        retrieved_at="2026-10-13T00:00:00+00:00",
+        tier=2,
+        source_type="official_company_website",
+        company_number="989061593",
+        registry_values=(),
+        accepted=(),
+    )
+
+
+class DatedNewsTests(unittest.TestCase):
+    """A news item needs a real publication date in its own quote."""
+
+    def test_dated_news_is_accepted(self):
+        fact, reason = verify_news(news_candidate())
+        self.assertIsNone(reason)
+        self.assertEqual(fact.published_date, "2025-03-12")
+
+    def test_missing_publication_date_is_rejected(self):
+        _, reason = verify_news(
+            news_candidate(published_date="")
+        )
+        self.assertIn("require a stated publication date", reason)
+
+    def test_date_outside_the_quote_is_rejected(self):
+        _, reason = verify_news(
+            news_candidate(
+                quote="G-Group kjopte Example AS.",
+                published_date="2025-03-12",
+            )
+        )
+        self.assertIn("not present in the quoted text", reason)
+
+    def test_modified_timestamp_is_not_a_publication_date(self):
+        _, reason = verify_news(
+            news_candidate(
+                quote="Sist oppdatert 13. mars 2025",
+                published_date="2025-03-13",
+            )
+        )
+        self.assertIn("modified or updated timestamp", reason)
+
+    def test_feed_updated_timestamp_is_rejected(self):
+        page = "Updated 12 March 2025\nG-Group kjopte Example AS."
+        _, reason = verify_news(
+            news_candidate(
+                quote="Updated 12 March 2025\nG-Group kjopte Example AS.",
+            ),
+            page_text=page,
+        )
+        self.assertIn("modified or updated timestamp", reason)
+
+    def test_article_using_updated_is_not_a_timestamp(self):
+        # "Updated" in ordinary prose must not disqualify a dated story;
+        # only an update/date pair marks a modified timestamp.
+        page = (
+            "G-Group updated its guidance on 12 March 2025 after the "
+            "contract.\n12 March 2025"
+        )
+        _, reason = verify_news(
+            news_candidate(
+                value="G-Group updated its guidance after the contract.",
+                quote=(
+                    "G-Group updated its guidance on 12 March 2025 after "
+                    "the contract."
+                ),
+                published_date="2025-03-12",
+            ),
+            page_text=page,
+        )
+        self.assertIsNone(reason)
+
+    def test_json_feed_updated_timestamp_is_rejected(self):
+        quote = '"updated": "2025-03-12"'
+        page = quote + "\nG-Group signed a contract."
+        _, reason = verify_news(
+            news_candidate(
+                quote=quote,
+                published_date="2025-03-12",
+            ),
+            page_text=page,
+        )
+        self.assertIn("modified or updated timestamp", reason)
+
+    def test_navigation_label_is_not_news(self):
+        _, reason = verify_news(
+            news_candidate(
+                value="News",
+                quote="Nyheter\n12. mars 2025",
+            )
+        )
+        self.assertIn("navigation or section label", reason)
+
+    def test_product_page_is_not_news(self):
+        _, reason = verify_news(
+            news_candidate(),
+            source_url="https://example.no/products/widget",
+        )
+        self.assertIn("product or listing page", reason)
+
+    def test_english_month_is_matched_in_the_quote(self):
+        page = "G-Group signed a contract.\n14 October 2025"
+        _, reason = verify_news(
+            news_candidate(
+                value="G-Group signed a contract.",
+                quote="G-Group signed a contract.\n14 October 2025",
+                published_date="2025-10-14",
+            ),
+            page_text=page,
+        )
+        self.assertIsNone(reason)
+
+    def test_month_first_candidate_date_is_normalised(self):
+        page = "G-Group signed a contract.\nOctober 14, 2025"
+        fact, reason = verify_news(
+            news_candidate(
+                value="G-Group signed a contract.",
+                quote="G-Group signed a contract.\nOctober 14, 2025",
+                published_date="October 14, 2025",
+            ),
+            page_text=page,
+        )
+        self.assertIsNone(reason)
+        self.assertEqual(fact.published_date, "2025-10-14")
+
+
+PAGE_TWO = """
+Vi leverer programvare for regnskap og lønn.
+Selskapet ble stiftet i 2014 og har kontorer i Bergen.
+"""
+
+
+def page_input(
+    text=PAGE,
+    url="https://example.no/about",
+    tier=2,
+    title="About",
+):
+    return PageInput(
+        page_text=text,
+        source_url=url,
+        retrieved_at="2026-10-13T00:00:00+00:00",
+        tier=tier,
+        source_type=(
+            "official_company_website" if tier <= 2 else "business_directory"
+        ),
+        title=title,
+    )
+
+
+def batch_candidate(field, value, quote, page):
+    return {
+        "field": field,
+        "value": value,
+        "quote": quote,
+        "published_date": "",
+        "page": page,
+    }
+
+
+class BatchExtractionTests(unittest.TestCase):
+    """Two pages share one call without sharing their evidence."""
+
+    def _run(self, pages, facts):
+        calls = []
+
+        def model(schema, *, system, user):
+            calls.append({"schema": schema, "system": system, "user": user})
+            return llm.LLMResult(
+                data={"facts": facts},
+                model="m",
+                provider="openai_compatible",
+                finish_reason="stop",
+            )
+
+        with patch("src.extract.llm.is_available", return_value=True):
+            with patch("src.extract.llm.complete_json", side_effect=model):
+                reports = extract_from_pages(
+                    pages,
+                    company_number="989061593",
+                    company_name="-G- GROUP AS",
+                    registry_values=["-G- GROUP AS"],
+                )
+        return reports, calls
+
+    def test_two_pages_share_one_call(self):
+        reports, calls = self._run(
+            [
+                page_input(),
+                page_input(PAGE_TWO, "https://example.no/tjenester"),
+            ],
+            [
+                batch_candidate(
+                    "business_summary",
+                    "Investment company",
+                    "We are a Norwegian investment company founded in 2005.",
+                    "p1",
+                ),
+                batch_candidate(
+                    "services",
+                    "Accounting software",
+                    "Vi leverer programvare for regnskap og lønn.",
+                    "p2",
+                ),
+            ],
+        )
+
+        self.assertEqual(len(calls), 1)
+        self.assertTrue(all(report.llm_used for report in reports))
+        self.assertEqual([len(report.facts) for report in reports], [1, 1])
+
+    def test_a_page_the_batch_skipped_is_read_alone(self):
+        calls = []
+
+        def model(schema, *, system, user):
+            calls.append(user)
+            facts = [
+                batch_candidate(
+                    "business_summary",
+                    "Investment company",
+                    "We are a Norwegian investment company founded in 2005.",
+                    "p1",
+                )
+            ]
+            if "=== PAGE p1 ===" not in user:
+                facts = [
+                    batch_candidate(
+                        "services",
+                        "Accounting software",
+                        "Vi leverer programvare for regnskap og lønn.",
+                        "p1",
+                    )
+                ]
+            return llm.LLMResult(
+                data={"facts": facts},
+                model="m",
+                provider="openai_compatible",
+                finish_reason="stop",
+            )
+
+        with patch("src.extract.llm.is_available", return_value=True):
+            with patch("src.extract.llm.complete_json", side_effect=model):
+                reports = extract_from_pages(
+                    [
+                        page_input(),
+                        page_input(PAGE_TWO, "https://example.no/tjenester"),
+                    ],
+                    company_number="989061593",
+                    company_name="-G- GROUP AS",
+                    registry_values=["-G- GROUP AS"],
+                )
+
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(
+            [len(report.facts) for report in reports], [1, 1]
+        )
+        self.assertTrue(reports[1].retried_for_breadth)
+        self.assertTrue(reports[1].facts[0].source_url.endswith("/tjenester"))
+
+    def test_each_fact_is_attributed_to_its_own_page(self):
+        reports, _ = self._run(
+            [
+                page_input(),
+                page_input(PAGE_TWO, "https://example.no/tjenester"),
+            ],
+            [
+                batch_candidate(
+                    "business_summary",
+                    "Investment company",
+                    "We are a Norwegian investment company founded in 2005.",
+                    "p1",
+                ),
+                batch_candidate(
+                    "services",
+                    "Accounting software",
+                    "Vi leverer programvare for regnskap og lønn.",
+                    "p2",
+                ),
+            ],
+        )
+
+        self.assertEqual(len(reports[0].facts), 1)
+        self.assertEqual(len(reports[1].facts), 1)
+        self.assertEqual(
+            reports[0].facts[0].source_url, "https://example.no/about"
+        )
+        self.assertEqual(
+            reports[1].facts[0].source_url,
+            "https://example.no/tjenester",
+        )
+
+    def test_a_wrong_page_label_is_corrected_by_the_quote(self):
+        reports, _ = self._run(
+            [
+                page_input(),
+                page_input(PAGE_TWO, "https://example.no/tjenester"),
+            ],
+            [
+                batch_candidate(
+                    "business_summary",
+                    "Investment company",
+                    "We are a Norwegian investment company founded in 2005.",
+                    "p2",
+                )
+            ],
+        )
+
+        self.assertEqual(len(reports[0].facts), 1)
+        self.assertEqual(reports[1].facts, [])
+        self.assertEqual(
+            reports[0].facts[0].source_url, "https://example.no/about"
+        )
+
+    def test_a_quote_in_no_page_is_refused_against_the_page_it_names(self):
+        reports, _ = self._run(
+            [
+                page_input(),
+                page_input(PAGE_TWO, "https://example.no/tjenester"),
+            ],
+            [
+                batch_candidate(
+                    "business_summary",
+                    "Forty offices",
+                    "We run forty offices across Scandinavia.",
+                    "p2",
+                )
+            ],
+        )
+
+        self.assertEqual(reports[0].facts, [])
+        self.assertEqual(reports[1].facts, [])
+        self.assertEqual(len(reports[1].rejected), 1)
+        self.assertEqual(
+            reports[1].rejected[0]["reason"], "quote not found in page"
+        )
+
+    def test_a_quote_in_both_pages_uses_the_named_page(self):
+        shared = "\nVi har kontorer i Norge.\n"
+        reports, _ = self._run(
+            [
+                page_input(PAGE + shared, "https://example.no/a"),
+                page_input(PAGE_TWO + shared, "https://example.no/b"),
+            ],
+            [
+                batch_candidate(
+                    "business_summary",
+                    "Norwegian offices",
+                    "Vi har kontorer i Norge.",
+                    "p2",
+                )
+            ],
+        )
+
+        self.assertEqual(reports[0].facts, [])
+        self.assertEqual(len(reports[1].facts), 1)
+
+    def test_the_same_statement_from_both_pages_is_published_once(self):
+        shared = "\nVi har kontorer i Norge.\n"
+        reports, _ = self._run(
+            [
+                page_input(PAGE + shared, "https://example.no/a"),
+                page_input(PAGE_TWO + shared, "https://example.no/b"),
+            ],
+            [
+                batch_candidate(
+                    "business_summary",
+                    "Norwegian offices",
+                    "Vi har kontorer i Norge.",
+                    "p1",
+                ),
+                batch_candidate(
+                    "business_summary",
+                    "Norwegian offices",
+                    "Vi har kontorer i Norge.",
+                    "p2",
+                ),
+            ],
+        )
+
+        self.assertEqual(len(reports[0].facts), 1)
+        self.assertEqual(reports[1].facts, [])
+        self.assertEqual(
+            reports[1].rejected[0]["reason"],
+            "duplicates an accepted business_summary fact",
+        )
+
+    def test_an_empty_page_is_reported_without_a_call(self):
+        reports, calls = self._run(
+            [
+                page_input("   ", "https://example.no/empty"),
+                page_input(PAGE_TWO, "https://example.no/tjenester"),
+            ],
+            [
+                batch_candidate(
+                    "services",
+                    "Accounting software",
+                    "Vi leverer programvare for regnskap og lønn.",
+                    "p1",
+                )
+            ],
+        )
+
+        self.assertEqual(len(calls), 1)
+        self.assertIn("no text content", reports[0].error)
+        self.assertEqual(len(reports[1].facts), 1)
+
+    def test_an_oversized_page_falls_back_to_single_reads(self):
+        huge = PAGE + ("x" * (MAX_BATCH_PAGE_CHARS + 1))
+        reports, calls = self._run(
+            [
+                page_input(),
+                page_input(huge, "https://example.no/long"),
+            ],
+            [],
+        )
+
+        self.assertEqual(len(calls), 2)
+        self.assertTrue(all(report.llm_used for report in reports))
+
+    def test_a_truncated_batch_falls_back_to_single_reads(self):
+        calls = []
+
+        def model(schema, *, system, user):
+            calls.append(user)
+            if len(calls) == 1:
+                raise llm.LLMTruncated("response was cut off")
+            return llm.LLMResult(
+                data={"facts": []},
+                model="m",
+                provider="openai_compatible",
+                finish_reason="stop",
+            )
+
+        with patch("src.extract.llm.is_available", return_value=True):
+            with patch("src.extract.llm.complete_json", side_effect=model):
+                reports = extract_from_pages(
+                    [
+                        page_input(),
+                        page_input(PAGE_TWO, "https://example.no/tjenester"),
+                    ],
+                    company_number="989061593",
+                    company_name="-G- GROUP AS",
+                    registry_values=["-G- GROUP AS"],
+                )
+
+        self.assertEqual(len(calls), 3)
+        self.assertTrue(all(report.llm_used for report in reports))
+        self.assertIsNone(reports[0].error)
+        self.assertIsNone(reports[1].error)
+
+    def test_a_rate_limited_batch_is_not_retried_once_per_page(self):
+        calls = []
+
+        def model(*_args, **_kwargs):
+            calls.append(1)
+            raise llm.LLMCallFailed("rate limited (429)")
+
+        with patch("src.extract.llm.is_available", return_value=True):
+            with patch("src.extract.llm.complete_json", side_effect=model):
+                reports = extract_from_pages(
+                    [
+                        page_input(),
+                        page_input(PAGE_TWO, "https://example.no/tjenester"),
+                    ],
+                    company_number="989061593",
+                    company_name="-G- GROUP AS",
+                    registry_values=["-G- GROUP AS"],
+                )
+
+        self.assertEqual(len(calls), 1)
+        self.assertTrue(all("429" in (report.error or "") for report in reports))
+
+    def test_a_restatement_only_batch_page_still_gets_its_second_pass(self):
+        calls = []
+
+        def model(schema, *, system, user):
+            is_batch = "page" in schema["properties"]["facts"]["items"][
+                "properties"
+            ]
+            calls.append({"schema": schema, "user": user})
+            if is_batch:
+                return llm.LLMResult(
+                    data={
+                        "facts": [
+                            candidate(value="-G- GROUP AS",
+                                      quote="- G- GROUP AS")
+                        ]
+                    },
+                    model="m",
+                    provider="openai_compatible",
+                    finish_reason="stop",
+                )
+            return llm.LLMResult(
+                data={"facts": [candidate()]},
+                model="m",
+                provider="openai_compatible",
+                finish_reason="stop",
+            )
+
+        with patch("src.extract.llm.is_available", return_value=True):
+            with patch("src.extract.llm.complete_json", side_effect=model):
+                reports = extract_from_pages(
+                    [
+                        page_input(),
+                        page_input(PAGE_TWO, "https://example.no/tjenester"),
+                    ],
+                    company_number="989061593",
+                    company_name="-G- GROUP AS",
+                    registry_values=["-G- GROUP AS"],
+                )
+
+        self.assertTrue(reports[0].retried_for_breadth)
+        self.assertEqual(len(reports[0].facts), 1)
+        self.assertEqual(len(calls), 2)
+
+    def test_batch_prompt_and_schema_require_page_attribution(self):
+        _, calls = self._run(
+            [
+                page_input(),
+                page_input(PAGE_TWO, "https://example.no/tjenester"),
+            ],
+            [],
+        )
+
+        items = calls[0]["schema"]["properties"]["facts"]["items"]
+        self.assertIn("page", items["required"])
+        self.assertEqual(items["properties"]["page"]["enum"], ["p1", "p2"])
+        self.assertIn("PAGE p1", calls[0]["user"])
+        self.assertIn("PAGE p2", calls[0]["user"])
+        self.assertIn("`page`", BATCH_SYSTEM_PROMPT)
+        # Building a batch schema must not mutate the shared one.
+        self.assertNotIn(
+            "page", EXTRACTION_SCHEMA["properties"]["facts"]["items"]["properties"]
+        )
+
+
+class BreadthRetryTests(unittest.TestCase):
+    """The second pass is a model call, so it has to earn its place.
+
+    A directory that only restated the registry is not worth a second
+    call once the company already has facts: measured across fifty
+    companies, directory pages yielded 0.11 facts each.
+    """
+
+    def _run(self, *, tier, seen, calls):
+        restatement = {
+            "facts": [candidate(value="-G- GROUP AS", quote="- G- GROUP AS")],
+        }
+        useful = {
+            "facts": [
+                candidate(
+                    value="investment company",
+                    quote="We are a Norwegian investment company founded in 2005.",
+                )
+            ],
+        }
+
+        def model(*_args, **_kwargs):
+            calls.append(_kwargs.get("user") or (_args[2] if _args else ""))
+            return llm.LLMResult(
+                data=restatement if len(calls) == 1 else useful,
+                model="m",
+                provider="anthropic",
+                finish_reason="end_turn",
+            )
+
+        with patch("src.extract.llm.is_available", return_value=True):
+            with patch("src.extract.llm.complete_json", side_effect=model):
+                return extract_from_page(
+                    page_text=PAGE,
+                    source_url="https://example.no/about",
+                    retrieved_at="2026-10-13T00:00:00+00:00",
+                    company_number="989061593",
+                    company_name="-G- GROUP AS",
+                    tier=tier,
+                    source_type=(
+                        "official_company_website"
+                        if tier <= 2
+                        else "business_directory"
+                    ),
+                    registry_values=["-G- GROUP AS"],
+                    already_accepted=seen,
+                )
+
+    @staticmethod
+    def _fact():
+        from src.extract import ExtractedFact
+
+        return ExtractedFact(
+            field="business_summary",
+            value="something already published",
+            quote="Oslo",
+            source_url="https://example.no/about",
+            retrieved_at="2026-10-13T00:00:00+00:00",
+            tier=2,
+            source_type="official_company_website",
+            confidence=0.9,
+        )
+
+    def test_first_party_page_still_gets_a_second_pass(self):
+        calls = []
+        report = self._run(tier=2, seen=[self._fact()], calls=calls)
+
+        self.assertEqual(len(calls), 2)
+        self.assertTrue(report.retried_for_breadth)
+
+    def test_directory_page_is_not_retried_once_facts_exist(self):
+        calls = []
+        report = self._run(tier=6, seen=[self._fact()], calls=calls)
+
+        self.assertEqual(len(calls), 1)
+        self.assertFalse(report.retried_for_breadth)
+
+    def test_directory_still_gets_a_second_pass_when_the_company_has_nothing(self):
+        calls = []
+        report = self._run(tier=6, seen=[], calls=calls)
+
+        self.assertEqual(len(calls), 2)
+        self.assertTrue(report.retried_for_breadth)
 
 
 if __name__ == "__main__":

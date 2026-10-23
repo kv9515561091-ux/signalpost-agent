@@ -41,7 +41,14 @@ python run_batch.py --no-llm                       # deterministic, free
 python run_batch.py --resume                       # continue an interrupted run
 python -m src.agent 989061593 --extract --max-crawl-links 0   # no crawl
 
-python -m unittest discover -s tests               # 492 tests
+# One command for a file of company numbers; keyless is supported.
+python run_daily.py --input companies.txt --output profiles.json
+python run_daily.py --input companies.txt --output profiles.json --keyless
+
+# run_daily.py auto-detects: no explicit key means keyless mode; --keyless
+# also overrides keys present in .env so the result is reproducible.
+
+python -m unittest discover -s tests               # 628 tests
 ruff check .                                         # lint
 mypy                                                 # types (advisory)
 ```
@@ -65,8 +72,8 @@ NVIDIA_API_KEY=nvapi-...         # NVIDIA NIM; nothing to install
 ```
 
 An Anthropic key wins if both are set; `LLM_PROVIDER` overrides the
-choice (`anthropic` | `nvidia` | `none`). Without a key the agent runs
-unchanged — see [Optional LLM](#optional-llm).
+choice (`anthropic` | `nvidia` | `none`). Without a key the agent runs the
+keyless path — see [Optional LLM](#optional-llm).
 
 Configured credentials always beat a merely discoverable one. The
 Anthropic SDK resolves an on-disk profile with no environment variable
@@ -200,9 +207,18 @@ will happily produce:
   published once.
 - **Business-only.** Personal biography is refused in code, not by
   instruction. See below.
-- **Official website first.** The registered domain is seeded as a
-  Tier-2 source ahead of search results, since it is the strongest thing
-  the agent can find.
+- **Official website, verified.** The registered domain is seeded ahead
+  of search results, but it becomes first-party only when the fetched
+  page carries the company's organization number or exact registered
+  name. A parent-group or web-agency site fails that check, and its
+  social links and news are not inherited.
+- **Matching social handles only.** A social URL is published only when
+  its handle matches the company name, a previous name or the registered
+  domain label. Group pages, personal profiles and agency accounts are
+  rejected even when they appear in a genuine footer.
+- **Dated news only.** A `recent_developments` fact requires a stated
+  publication date inside its quote. Navigation labels, product pages,
+  and modified/feed-updated timestamps are discarded.
 - **Deterministic temperature.** Extraction asks for `temperature=0.0`
   and falls back to `1.0` only if the endpoint rejects it.
 
@@ -213,11 +229,12 @@ carry the durable facts. So a verified first-party page may enqueue
 follow-ups from **its own domain**.
 
 This is safe where arbitrary search is not. Every URL sits on the domain
-the registry already vouched for, so it inherits the homepage's
-verification rather than earning its own — the crawler never widens the
-trust boundary, it only walks inside one that has been proven. The walk
-is depth one and hard-capped (`--max-crawl-links`, default 5), so it
-cannot run away into a sitemap.
+the registry already vouched for, and each fetched follow-up must itself
+carry the organization number or exact registered name before its text
+is extracted. A footer link cannot lend a page trust it has not earned,
+and the crawler never widens the trust boundary. The walk is depth one
+and hard-capped (`--max-crawl-links`, default 5), so it cannot run away
+into a sitemap.
 
 Link choice prefers *stable* pages and rejects press, personnel and
 compliance pages. Those are not merely ranked last: they score negative
@@ -344,6 +361,8 @@ src/
   sources.py       7-tier reliability model, structural URL classification
   identity.py      wrong-company guard (pure, no I/O)
   discovery.py     search → verify → rank
+  website.py       registered-site ownership + matching social links
+  social.py        social platform and handle matching
   crawl.py         bounded same-domain follow-up planner
   extract.py       schema-guided extraction + quote verification
   explain.py       narrative + deterministic fallback
@@ -365,7 +384,7 @@ src/
   request_tracker.py  outbound request budget
   __main__.py      single-company CLI (`signalpost`)
 run_batch.py       shim preserving `python run_batch.py`
-tests/             492 tests, no network required
+tests/             628 tests, no network required
 tools/              record_fixture.py regenerates the end-to-end recording
 ```
 
@@ -417,7 +436,7 @@ purpose: the project shipped hundreds of tests and no type checking at all, and
 its first pass found nine issues — one of them a live bug, where the
 crawl gate compared an optional domain against a string and silently
 disabled the crawl for any company without a registered website. It now
-passes on all 28 source files. Making it a gate is a deliberate,
+passes on all 34 source files. Making it a gate is a deliberate,
 incremental change rather than something to flip on in the same commit
 that introduces it.
 
@@ -429,18 +448,25 @@ that introduces it.
 | `ANTHROPIC_API_KEY` | for `--extract` | Claude, via the official SDK |
 | `NVIDIA_API_KEY` | for `--extract` | NVIDIA NIM or any Chat Completions endpoint |
 | `LLM_PROVIDER` | no | `anthropic` \| `nvidia` \| `none`; overrides auto-detection |
-| `NVIDIA_MODEL` | no | Default `nvidia/nemotron-3-super-120b-a12b` |
+| `NVIDIA_MODEL` | no | Default `nvidia/nemotron-3.5-super-vl-120b-a12b` |
 | `NVIDIA_BASE_URL` | no | Default `https://integrate.api.nvidia.com/v1` |
 | `NVIDIA_THINKING` | no | `true` to leave the model's reasoning on |
 | `NVIDIA_RPM` | no | Request pacing, default 30. `0` disables |
+| `NVIDIA_CONCURRENCY` | no | Model calls in flight, default 8 (the worker count). Lower only if 429s persist after backoff |
+| `AGENT_PREFETCH` | no | `0` disables fetch/model overlap (default on) |
+| `AGENT_MAX_PAGES` | no | Competition page cap, default 10 |
+| `AGENT_RUN_MINUTES` | no | Soft deadline for `run_daily.py`, default 40 |
 
-Extraction depth, same defaults in both entry points and settable in
-both: **8 sources, 14 pages and 5 crawl links** per company. Sources stop
-at eight because past that the marginal results are directories
-repeating Enhetsregisteret -- measured, tier 2 supplied 81% of published
-facts and tier 6 only 12%; pages exceed sources because a source costs a
-search while a page costs a model call. `--max-crawl-links 0` disables the crawl
-entirely, leaving homepage-only behaviour.
+Extraction depth is **8 sources, 14 pages and 5 crawl links** per
+company in the batch CLI; `run_daily.py` caps pages at ten so a hundred
+companies fit both the 2,000-request ceiling and the 45-minute limit.
+Sources stop at eight because past that the marginal results are
+directories repeating Enhetsregisteret -- measured, tier 2 supplied 81%
+of published facts and tier 6 only 12%; pages exceed sources because a
+source costs a search while a page costs a model call.
+`--max-crawl-links 0` disables the crawl entirely, leaving homepage-only
+behaviour. Two pages share one extraction call and the next pair is
+fetched while the model reads the current pair.
 
 These bound cost, never trust — the identity gate runs first, so widening
 them widens what is *considered*, not what is *accepted*.
