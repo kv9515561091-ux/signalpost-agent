@@ -19,7 +19,7 @@ git rev-parse HEAD
 Current submission commit:
 
 ```
-f3c8fb9
+a6d4b72
 ```
 
 CI is green on Python 3.10–3.13. Verify the exact hash at the moment of
