@@ -173,13 +173,13 @@ def social_handle_matches(
     *,
     company_name: str,
     previous_names: tuple[str, ...] | list[str] = (),
-    registered_website: str | None = None,
 ) -> bool:
     """True when the social handle visibly names this company.
 
     Exact handle equality is required after removing the legal form and
     punctuation. A parent-group handle such as ``acmegroup`` does not
-    match ``Acme Norge AS`` merely because they share a token.
+    match ``Acme Norge AS`` merely because they share a token, and a
+    registry-listed group domain does not make a group handle first-party.
     """
     account = account_from_url(url)
     if account is None:
@@ -197,15 +197,6 @@ def social_handle_matches(
         if (compact := _compact(strip_legal_form(name or "")))
         and len(compact) >= 3
     }
-
-    domain = get_domain(registered_website or "")
-    if domain:
-        label = domain.split(".")[0]
-        compact_label = _compact(label)
-        if len(compact_label) >= 3:
-            candidates.add(compact_label)
-        else:
-            candidates.add(_compact(domain.replace(".", "")))
 
     if normalized in candidates:
         return True

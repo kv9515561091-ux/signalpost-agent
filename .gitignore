@@ -6,6 +6,8 @@ data/*.json
 data/competition_profiles.json
 data/corpus_profiles.json
 data/cache/
+data/*.csv.gz
+data/*.csv.gz.part
 data/*.log
 data/*.err
 data/*.pid

@@ -132,7 +132,6 @@ def discover_sources(
                 url,
                 company_name=identity.name,
                 previous_names=identity.previous_names,
-                registered_website=identity.registered_website,
             ):
                 seen_urls.add(url)
                 continue

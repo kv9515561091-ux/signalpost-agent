@@ -168,6 +168,7 @@ class CompanyProfile(BaseModel):
     # Group
     is_group_parent: bool | None = None
     parent_company_number: str | None = None
+    locations: list[dict[str, Any]] = Field(default_factory=list)
 
     # Management
     ceo_name: str | None = None
@@ -1041,6 +1042,65 @@ def _apply_web_enrichment(
     profile.conflicts = reconcile_evidence(profile.evidence)
 
 
+def _locations_evidence(
+    subunits: list[dict[str, Any]] | None,
+) -> tuple[list[Evidence], list[dict[str, Any]]]:
+    """Turn registered subunits into workplace records plus provenance."""
+    evidence: list[Evidence] = []
+    records: list[dict[str, Any]] = []
+
+    for raw in (subunits or [])[:25]:
+        name = raw.get("name")
+        if not name:
+            continue
+        source_url = str(raw.get("source") or "")
+        retrieved_at = str(raw.get("retrieved_at") or "")
+        record = {
+            "organisation_number": raw.get("organisation_number"),
+            "name": name,
+            "form": raw.get("organisation_form"),
+            "address": raw.get("address"),
+            "municipality": raw.get("municipality"),
+            "industry": raw.get("industry"),
+            "employee_count": raw.get("employee_count"),
+            "website": raw.get("website"),
+            "email": raw.get("email"),
+            "phone": raw.get("phone"),
+            "source": source_url,
+            "retrieved_at": retrieved_at,
+        }
+        records.append(record)
+
+        _add(evidence, _record(
+            "workplace_name", name,
+            source_url=source_url, retrieved_at=retrieved_at,
+            evidence_text=f"Registered workplace: {name}",
+            source_type="official_subunits",
+        ))
+        if record["address"]:
+            _add(evidence, _record(
+                "workplace_address", record["address"],
+                source_url=source_url, retrieved_at=retrieved_at,
+                evidence_text=(
+                    f"Registered workplace address for {name}: "
+                    f"{record['address']}"
+                ),
+                source_type="official_subunits",
+            ))
+        if record["employee_count"] is not None:
+            _add(evidence, _record(
+                "workplace_employee_count", record["employee_count"],
+                source_url=source_url, retrieved_at=retrieved_at,
+                evidence_text=(
+                    f"Registered employees at {name}: "
+                    f"{record['employee_count']}"
+                ),
+                source_type="official_subunits",
+            ))
+
+    return evidence, records
+
+
 def build_profile(
     company_number: str,
     *,
@@ -1052,6 +1112,10 @@ def build_profile(
     max_sources: int = DEFAULT_MAX_SOURCES,
     max_pages: int = DEFAULT_MAX_PAGES,
     max_crawl_links: int = DEFAULT_MAX_CRAWL_LINKS,
+    company_record: dict[str, Any] | None = None,
+    subunits: list[dict[str, Any]] | None = None,
+    include_roles: bool = True,
+    include_financials: bool = True,
 ) -> CompanyProfile:
     """Build a verified company profile from a Norwegian org number.
 
@@ -1082,6 +1146,17 @@ def build_profile(
         max_crawl_links: Follow-ups read from a verified first-party
             page. Zero disables the crawl entirely, leaving the
             homepage-only behaviour.
+        company_record: Pre-fetched Enhetsregisteret record, normally from a
+            frozen bulk export. Skips the live identity request.
+        subunits: Pre-fetched underenhet records for this parent, normally
+            from the frozen underenhet export. Adds registered workplaces
+            without a live request.
+        include_roles: Fetch management, board and auditor roles. Disable
+            only when the clock has run out and identity alone must be
+            written for the remaining companies.
+        include_financials: Fetch filed annual accounts. Disable when the
+            identity record shows no filing, or when the request budget
+            cannot afford a call that is known to return nothing.
 
     Raises:
         InvalidCompanyNumber: Malformed number or failed MOD-11 checksum.
@@ -1089,17 +1164,51 @@ def build_profile(
     """
     org_number = validate(company_number)
 
-    company = get_company(org_number)
-    roles = get_roles(org_number)
-    financials = get_financials(org_number)
+    company = (
+        company_record
+        if company_record is not None
+        else get_company(org_number)
+    )
+    if include_roles:
+        roles = get_roles(org_number)
+    else:
+        roles = {
+            "source": (
+                "https://data.brreg.no/enhetsregisteret/api/enheter/"
+                f"{org_number}/roller"
+            ),
+            "retrieved_at": company.get("retrieved_at"),
+            "roles": [],
+            "error": None,
+        }
+    if include_financials:
+        financials = get_financials(org_number)
+    else:
+        financials = {
+            "years": [],
+            "latest": None,
+            "currency": None,
+            "source": (
+                "https://data.brreg.no/regnskapsregisteret/regnskap/"
+                f"{org_number}"
+            ),
+            "retrieved_at": company.get("retrieved_at"),
+            "error": None,
+        }
 
     identity = CompanyIdentity.from_brreg(company)
 
     registry_evidence = _registry_evidence(company)
     role_evidence, role_records = _roles_evidence(roles)
     fin_evidence, financial_years = _financial_evidence(financials)
+    location_evidence, location_records = _locations_evidence(subunits)
 
-    evidence = [*registry_evidence, *role_evidence, *fin_evidence]
+    evidence = [
+        *registry_evidence,
+        *role_evidence,
+        *fin_evidence,
+        *location_evidence,
+    ]
 
     # Identity is mandatory and raises on failure; management and accounts
     # are enrichments that degrade to empty. Record which, so a missing
@@ -1124,10 +1233,11 @@ def build_profile(
 
     industry = company.get("industry") or {}
 
+    source_urls = [company["source"], roles["source"], financials["source"]]
+    if location_records:
+        source_urls.append(str(location_records[0].get("source") or ""))
     sources: list[str] = list(
-        dict.fromkeys(
-            [company["source"], roles["source"], financials["source"]]
-        )
+        dict.fromkeys(source for source in source_urls if source)
     )
 
     profile = CompanyProfile(
@@ -1167,6 +1277,7 @@ def build_profile(
 
         is_group_parent=company.get("is_group_parent"),
         parent_company_number=company.get("parent_company_number"),
+        locations=location_records,
 
         ceo_name=roles.get("ceo_name"),
         board_chair_name=roles.get("board_chair_name"),

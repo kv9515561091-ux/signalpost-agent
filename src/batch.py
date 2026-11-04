@@ -25,6 +25,7 @@ import tempfile
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -103,6 +104,7 @@ def mode_signature(
     include_narrative: bool,
     use_llm: bool,
     include_website_check: bool = False,
+    bulk: bool = False,
     max_sources: int,
     max_pages: int,
     max_crawl_links: int,
@@ -126,6 +128,8 @@ def mode_signature(
         modes.append("narrate")
     if use_llm:
         modes.append("llm")
+    if bulk:
+        modes.append("bulk")
 
     return (
         f"{'+'.join(modes) or 'registry'}"
@@ -308,9 +312,12 @@ def process_companies(
     max_sources: int = DEFAULT_MAX_SOURCES,
     max_pages: int = DEFAULT_MAX_PAGES,
     max_crawl_links: int = DEFAULT_MAX_CRAWL_LINKS,
+    company_records: dict[str, dict[str, Any]] | None = None,
+    subunit_records: dict[str, list[dict[str, Any]]] | None = None,
     resume: bool = False,
     workers: int = DEFAULT_WORKERS,
     deadline: float | None = None,
+    persist_every: int = 1,
     progress=None,
 ) -> list[dict[str, Any]]:
     """Build a profile for each org number and persist the results.
@@ -329,6 +336,12 @@ def process_companies(
         max_pages: Page ceiling per company.
         max_crawl_links: Same-domain follow-ups read from each verified
             first-party page. Zero disables the crawl.
+        company_records: Pre-fetched identity records keyed by organisation
+            number, normally from a frozen bulk export. Saves one live
+            registry request per company.
+        subunit_records: Pre-fetched underenhet records keyed by parent
+            organisation number, normally from a frozen export. Adds
+            registered workplaces without a live request per company.
         resume: Reuse completed companies from a previous run under the
             same settings. Companies that errored are retried, since a
             transient failure should not be permanent.
@@ -339,6 +352,11 @@ def process_companies(
             being enriched and are built from the registry alone. They
             are still profiled and still appear in the output, so the
             company list is complete even when the clock is not.
+        persist_every: Write the growing profile array and resume state
+            after this many completed companies. ``1`` keeps the
+            crash-resilient behaviour; larger values avoid rewriting a
+            multi-megabyte array a thousand times in a large run. The
+            final array is always written.
         progress: Optional callback ``(index, total, raw, record)`` for
             per-company reporting. With concurrency, calls arrive in
             completion order and ``index`` is the company's input
@@ -368,6 +386,7 @@ def process_companies(
         include_narrative=include_narrative,
         include_website_check=include_website_check,
         use_llm=use_llm,
+        bulk=bool(company_records),
         max_sources=max_sources,
         max_pages=max_pages,
         max_crawl_links=max_crawl_links,
@@ -375,6 +394,8 @@ def process_companies(
 
     results: list[dict[str, Any]] = []
     completed: set[str] = set()
+    persist_every = max(1, persist_every)
+    since_persist = 0
 
     wanted = {
         str(number).strip()
@@ -426,9 +447,10 @@ def process_companies(
     # requested. A reserve larger than the budget cannot protect
     # anything.
     ceiling = request_tracker.limit
+    registry_per_company = 0 if company_records else REGISTRY_REQUESTS_PER_COMPANY
     reserve = min(
-        REGISTRY_REQUESTS_PER_COMPANY * total,
-        max(0, ceiling - REGISTRY_REQUESTS_PER_COMPANY),
+        registry_per_company * total,
+        max(0, ceiling - registry_per_company),
     )
     run_budget = RequestBudget.from_tracker(
         request_tracker,
@@ -477,6 +499,10 @@ def process_companies(
     ) -> tuple[int, str, dict[str, Any], str | None]:
         nonlocal companies_left
 
+        started_at = datetime.now(timezone.utc).isoformat()
+        started_clock = time.monotonic()
+        requests_before = request_tracker.summary()["requests_used"]
+
         depth = max_pages
         if yieldcache.priority(raw) == yieldcache.PRIORITY_EMPTY:
             # Same sources, fewer of them. The walk is tier-ordered, so
@@ -509,6 +535,12 @@ def process_companies(
             companies_left = max(0, companies_left - 1)
 
         profile = None
+        clock_exhausted = skip_reason == "daily time budget"
+        company_record = (company_records or {}).get(raw)
+        has_filing = company_record is None or bool(
+            company_record.get("last_filed_annual_accounts")
+        )
+        include_financials = not clock_exhausted and has_filing
         try:
             profile = build_profile(
                 raw,
@@ -520,8 +552,20 @@ def process_companies(
                 max_sources=max_sources,
                 max_pages=affordable,
                 max_crawl_links=max_crawl_links,
+                company_record=company_record,
+                subunits=(subunit_records or {}).get(raw),
+                include_roles=not clock_exhausted,
+                include_financials=include_financials,
             )
             record = profile.model_dump(mode="json")
+            if clock_exhausted:
+                record.setdefault("retrieval_errors", []).append(
+                    "roles: skipped after the daily time budget ran out"
+                )
+                if has_filing:
+                    record["retrieval_errors"].append(
+                        "financials: skipped after the daily time budget ran out"
+                    )
         except InvalidCompanyNumber as exc:
             record = {"company_number": raw, "error": str(exc)}
         except Exception as exc:  # noqa: BLE001 - one bad entity must not
@@ -530,6 +574,20 @@ def process_companies(
                 "company_number": raw,
                 "error": f"{type(exc).__name__}: {exc}",
             }
+
+        requests_used = (
+            request_tracker.summary()["requests_used"] - requests_before
+        )
+        record["_operations"] = {
+            "started_at": started_at,
+            "completed_at": datetime.now(timezone.utc).isoformat(),
+            "runtime_ms": int((time.monotonic() - started_clock) * 1000),
+            # With concurrent workers the tracker is process-wide, so a
+            # delta can include another company's requests. It is exact
+            # for the sequential path and a harmless over-estimate
+            # otherwise; the run report carries the authoritative total.
+            "requests": max(0, requests_used),
+        }
 
         if (
             profile is not None
@@ -549,6 +607,7 @@ def process_companies(
         return index, raw, record, skip_reason
 
     def finish(item: tuple[int, str, dict[str, Any], str | None]) -> None:
+        nonlocal since_persist
         index, raw, record, skip_reason = item
 
         with state_lock:
@@ -596,7 +655,10 @@ def process_companies(
                 )
             )
 
-            _persist(output_file, results, completed, signature)
+            since_persist += 1
+            if since_persist >= persist_every:
+                _persist(output_file, results, completed, signature)
+                since_persist = 0
 
         if progress is not None:
             progress(index, total, raw, record)

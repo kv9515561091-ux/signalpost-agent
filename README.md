@@ -48,7 +48,23 @@ python run_daily.py --input companies.txt --output profiles.json --keyless
 # run_daily.py auto-detects: no explicit key means keyless mode; --keyless
 # also overrides keys present in .env so the result is reproducible.
 
-python -m unittest discover -s tests               # 628 tests
+# Competition contract: one terminal envelope per company, plus a run report.
+python run_contract.py \
+  --input companies.txt \
+  --output envelopes.jsonl \
+  --profiles-output profiles.json \
+  --report report.json \
+  --expected-count 1000 \
+  --keyless --workers 16 --minutes 35
+
+# Runs of 500+ auto-load the frozen Brreg identity and underenhet exports.
+# Explicit snapshots and website verification:
+python run_contract.py --input companies.txt --expected-count 1000 \
+  --bulk data/brreg_bulk.csv.gz \
+  --underenheter data/brreg_underenheter.csv.gz \
+  --verify-websites
+
+python -m unittest discover -s tests               # 648 tests
 ruff check .                                         # lint
 mypy                                                 # types (advisory)
 ```
@@ -63,6 +79,15 @@ intentional ones.
 What differs, on purpose: `--input`, `--output` and `--delay` exist only
 for batches; `--check`, `--clear-cache`, `--json` and `-v` only for a
 single company.
+
+`run_contract.py` emits the competition envelope shape rather than the
+rich profile array: every input gets exactly one terminal record, including
+explicit error and missing-company records. Runs of 500 or more load the
+frozen identity export automatically; the underenhet export adds registered
+workplaces and their addresses without a live request per company. Both
+downloads are cached under `data/` and ignored by git. `--verify-websites`
+keeps the deterministic registered-site check on bulk runs; leave it off
+for a 1,000-company run to preserve request headroom.
 
 Optional LLM features use either provider. Put one key in `.env`:
 
@@ -213,9 +238,10 @@ will happily produce:
   name. A parent-group or web-agency site fails that check, and its
   social links and news are not inherited.
 - **Matching social handles only.** A social URL is published only when
-  its handle matches the company name, a previous name or the registered
-  domain label. Group pages, personal profiles and agency accounts are
-  rejected even when they appear in a genuine footer.
+  its handle matches the company name or a previous name. Group pages,
+  personal profiles and agency accounts are rejected even when they
+  appear in a genuine footer; a registry-listed group domain does not
+  make a group handle first-party.
 - **Dated news only.** A `recent_developments` fact requires a stated
   publication date inside its quote. Navigation labels, product pages,
   and modified/feed-updated timestamps are discarded.
@@ -331,6 +357,9 @@ FY2023 are not mistaken for a disagreement.
   shareholder register is a manual CSV order; the beneficial-owner register
   requires Maskinporten credentials. The agent reports the gap rather than
   guessing.
+- **Jobs and open positions have no official source in the pipeline.**
+  Registered workplaces come from the underenhet export; hiring data does
+  not, and is not inferred.
 - **Negative revenue is real.** Filed accounts can report negative total
   operating income after write-downs. These are published as filed, and
   derived ratios are suppressed when the denominator is not positive.
@@ -380,11 +409,15 @@ src/
   text.py          Norwegian-aware text folding
   batch.py         batch runner over a list of org numbers
   batch_cli.py     batch argument parsing (`signalpost-batch`)
+  bulk.py          frozen identity + underenhet exports, cached locally
+  contract.py      terminal envelopes, claims, evidence and report checks
+  contract_cli.py  competition contract CLI (`run_contract.py`)
   tinyfish_search.py  search provider adapter
   request_tracker.py  outbound request budget
   __main__.py      single-company CLI (`signalpost`)
 run_batch.py       shim preserving `python run_batch.py`
-tests/             628 tests, no network required
+run_contract.py    shim preserving `python run_contract.py`
+tests/             648 tests, no network required
 tools/              record_fixture.py regenerates the end-to-end recording
 ```
 
@@ -436,7 +469,7 @@ purpose: the project shipped hundreds of tests and no type checking at all, and
 its first pass found nine issues — one of them a live bug, where the
 crawl gate compared an optional domain against a string and silently
 disabled the crawl for any company without a registered website. It now
-passes on all 34 source files. Making it a gate is a deliberate,
+passes on all 37 source files. Making it a gate is a deliberate,
 incremental change rather than something to flip on in the same commit
 that introduces it.
 

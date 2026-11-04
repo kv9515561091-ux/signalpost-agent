@@ -16,36 +16,55 @@ https://github.com/kv9515561091-ux/signalpost-agent
 git rev-parse HEAD
 ```
 
-Current submission commit:
+The submitted commit is the repository `HEAD`. Record it at hand-off
+rather than relying on a line in this file:
 
-```
-a6d4b72
+```bash
+git rev-parse HEAD
 ```
 
-CI is green on Python 3.10–3.13. Verify the exact hash at the moment of
-submission rather than relying on this line.
+CI is green on Python 3.10–3.13.
 
 ## 3. One command to run it
 
 ```bash
-python run_daily.py --input companies.txt --output profiles.json
+python run_contract.py \
+  --input companies.txt \
+  --output envelopes.jsonl \
+  --profiles-output profiles.json \
+  --report report.json \
+  --expected-count 1000 \
+  --keyless --workers 16 --minutes 35
 ```
 
-The file holds one 9-digit organization number per line. One profile is
-written per company, with registry lookup, web discovery, quote-verified
-extraction, deterministic narrative, change detection against the
-previous run, and a request budget that degrades rather than fails.
+The input holds one 9-digit organization number per line. The output is
+one terminal envelope per company, in input order, plus a run report that
+checks exact count, uniqueness, terminal entity/module states and silent
+drops. Every claim carries source URL, retrieval time and evidence.
 
-The same command works **without any API key**:
+Runs of 500 or more automatically load the frozen Brreg identity export
+(`data/brreg_bulk.csv.gz`) and underenhet export
+(`data/brreg_underenheter.csv.gz`), downloading and caching each once when
+absent. The underenhet export adds registered workplaces without a live
+request per company. To exercise the 100-company path with the
+deterministic registered-website check:
 
 ```bash
-python run_daily.py --input companies.txt --output profiles.json --keyless
+python run_contract.py \
+  --input data/competition_100_unique.txt \
+  --output report/envelopes_100.jsonl \
+  --profiles-output report/profiles_100.json \
+  --report report/report_100.json \
+  --expected-count 100 --keyless --workers 16 --minutes 35 \
+  --bulk data/brreg_bulk.csv.gz \
+  --underenheter data/brreg_underenheter.csv.gz \
+  --verify-websites
 ```
 
-It then returns the registry spine plus a deterministic explanation for
-every company and makes zero model calls. `--keyless` also overrides keys
-present in `.env`, so the result is reproducible on the organizer's
-machine. Prerequisites:
+It works **without any API key**. `--keyless` overrides keys present in
+`.env`, so the result is reproducible on the organizer's machine. The
+contract CLI deliberately has no `--resume`: every input is rebuilt and
+rewritten each run. Prerequisites:
 
 ```bash
 pip install -r requirements.txt
@@ -55,22 +74,8 @@ Keys are optional. With only `NVIDIA_API_KEY`, the agent extracts from the
 registry-listed official website (search is skipped when no
 `TINYFISH_API_KEY` is configured). With both keys it also discovers
 additional verified sources. Credentials are read from `.env` but are
-never printed.
-
-`python run_daily.py` is resumable: re-running it after an interruption
-skips companies already completed and reports only what changed. A run
-that finished is refreshed in full on the next invocation: every company
-is re-read and compared with the stored profile, so a quiet day is
-reported as quiet only when the registry actually said so.
-
-Verified keyless rehearsal: 10/10 companies, 0 failures, 10 deterministic
-explanations, 0 fabricated facts, 22/2000 requests on the first pass and
-20/2000 on the refresh, which reported `first seen 0` and `unchanged 10`.
-
-The same mode is selected automatically when no key is configured, without
-requiring `--keyless`; a two-company check reported 2/2 succeeded and
-deterministic explanations, with any unverified registered site recorded
-rather than trusted.
+never printed. The rich daily path remains available through
+`python run_daily.py`; the contract path above is the scored one.
 
 ## 4. Model and API details
 
@@ -98,7 +103,30 @@ no `Retry-After`, so pacing and backoff are the only controls.
 
 ## 5. Expected run costs
 
-Declared in calls, since search is the only billable external API.
+### Default contract run — keyless, bulk
+
+Measured locally on the 1,000-number corpus:
+
+| Metric | Value |
+|---|---|
+| Companies returned / expected | **1,000 / 1,000** |
+| Claims / evidence | **28,230 / 28,230** |
+| Outbound requests | **1,407 / 2,000** |
+| Wall clock | **648 s** (~10.8 min) |
+| Identities from frozen export | **997 / 1,000** |
+| Registered workplaces | **821 across 634 companies** |
+| Billable external | **$0** |
+
+A 100-company smoke with `--verify-websites` returned 100/100, 2,484
+claims/evidence, 45 workplaces across 44 companies, and 245/2,000 requests
+in 159 s. A fresh cache adds two export downloads; the figures above use
+the cached snapshots.
+
+### Optional enrichment path
+
+Declared in calls, since search is the only billable external API. These
+figures describe the optional TinyFish/NVIDIA path, not the keyless
+contract default.
 
 | | Per 100 companies |
 |---|---|
@@ -171,29 +199,37 @@ scored daily run does.
 
 At least 1,000 profiles are supplied.
 
-- **All 1,000** are built registry-only: legal name and previous names,
+- **All 1,000** are built registry-first: legal name and previous names,
   legal form, status, industry and code, business description, founding
   and registration dates, addresses, municipality, contact details,
   group and status flags, full management list including every director,
-  and multi-year filed accounts where they exist. Measured on the
-  delivered corpus: **1,000 / 1,000** resolved with a legal name,
-  **920** carrying a filed management list, **511** carrying filed
-  multi-year accounts, and **zero** duplicate org numbers or failed
-  lookups.
-- **138** of those are additionally enriched with verified web sources,
-  quote-backed extraction, same-domain crawling and a written narrative.
+  registered workplaces, and multi-year filed accounts where they exist.
+  Measured on the 1,000-number corpus: **1,000 / 1,000** resolved with a
+  legal name, **917** carrying a management list, **507** carrying filed
+  accounts, **821** registered workplaces across **634** companies, and
+  **28,230** claims/evidence. Every company and module state is terminal;
+  there are no silent drops and no duplicate org numbers.
+- Five companies had a financials source error and three had a roles
+  source error; those gaps are named in `retrieval_errors` rather than
+  converted into empty or invented facts.
 
-Registry-only is not a lesser record. The registry *is* the authoritative
+Registry data is not a lesser record. The registry *is* the authoritative
 source for everything it holds, and enrichment adds facts the registry
-does not carry rather than correcting it. The enriched subset shows
-what the enrichment layer contributes.
+does not carry rather than correcting it. The optional web path still
+supplies verified sources, quote-backed extraction, same-domain crawling
+and a written narrative when keys are present.
 
-Both files are reproducible with one command, and the corpus is
-re-derivable from the input list:
+The corpus is reproducible from the input list:
 
 ```
-python run_batch.py --input data/corpus_1000.txt --output data/registry_1000.json
-python tools/verify_corpus.py data/registry_1000.json
+python run_contract.py \
+  --input data/corpus_1000.txt \
+  --output report/envelopes_1000.jsonl \
+  --profiles-output report/profiles_1000.json \
+  --report report/report_1000.json \
+  --expected-count 1000 --keyless --workers 16 --minutes 35 \
+  --bulk data/brreg_bulk.csv.gz \
+  --underenheter data/brreg_underenheter.csv.gz
 ```
 
 ## 7. What the agent produces
@@ -204,6 +240,9 @@ Per company, one JSON profile containing:
   status, industry and code, business description, founding and
   registration dates, addresses, municipality, employee count, contact
   details, group status, bankruptcy and liquidation flags.
+- **Registered workplaces** — parent-linked underenheter with name,
+  address, municipality, industry, employee count and contact details,
+  each carrying Brreg provenance.
 - **Website and social** — `registered_website` (the registry value),
   `website` only when verified, `website_verified`/`website_verification`
   with the org-number or exact-name basis, and `social_links` whose
@@ -231,6 +270,10 @@ a fabricated financial value disqualifies it.
 **Registry fields are never model-generated.** The registry owns them,
 and the extraction schema does not include them — the model is never
 offered the chance to restate a field the spine already holds.
+
+**Workplaces are parent-linked registry records.** Each location comes
+from the underenhet export and must name its parent organisation number.
+The agent does not infer offices, headcount or addresses from a website.
 
 **Every extracted fact must quote its source verbatim.** A quote that
 cannot be found in the fetched page text is discarded. A quote citing a
@@ -261,10 +304,11 @@ extracted, so a footer link cannot lend a page trust it has not earned.
 The crawl cannot widen the trust boundary.
 
 **Social accounts must match the company.** A handle is published only
-when it equals the company name, a previous name or the registered
-domain label after legal-form and punctuation normalisation. Group pages,
-personal profiles, post/reel URLs and parent-group or agency handles are
-rejected even when they appear in a genuine footer.
+when it equals the company name or a previous name after legal-form and
+punctuation normalisation. Group pages, personal profiles, post/reel URLs
+and parent-group or agency handles are rejected even when they appear in
+a genuine footer; a registry-listed group domain does not make a group
+handle first-party.
 
 **News needs a real publication date.** `recent_developments` is accepted
 only when the quote contains a parseable publication date matching the
@@ -306,9 +350,9 @@ the next run its comparison.
 ## 10. Verification
 
 ```bash
-python -m unittest discover -s tests    # test suite
+python -m unittest discover -s tests    # 648 tests
 ruff check .                            # lint, enforced in CI
-mypy                                    # types, advisory in CI
+mypy                                    # 37 source files, no issues
 ```
 
 CI runs the suite, ruff and mypy on Python 3.10–3.13, installs the

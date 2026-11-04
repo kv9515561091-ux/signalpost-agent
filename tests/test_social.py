@@ -90,12 +90,11 @@ class MatchTests(unittest.TestCase):
             )
         )
 
-    def test_registered_domain_label_is_accepted(self):
+    def test_brand_handle_matching_company_name_is_accepted(self):
         self.assertTrue(
             social_handle_matches(
                 "https://www.instagram.com/equinor/",
                 company_name="Equinor ASA",
-                registered_website="www.equinor.com",
             )
         )
 
@@ -112,7 +111,6 @@ class MatchTests(unittest.TestCase):
             social_handle_matches(
                 "https://www.facebook.com/acmegroup/",
                 company_name="Acme Norge AS",
-                registered_website="acme.no",
             )
         )
 

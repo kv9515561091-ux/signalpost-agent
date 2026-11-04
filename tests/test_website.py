@@ -120,6 +120,21 @@ class SocialLinkCollectionTests(unittest.TestCase):
         )
         self.assertEqual(links, [])
 
+    def test_group_handle_is_not_accepted_from_a_group_domain(self):
+        links = collect_social_links(
+            identity(
+                name="Acme Norge AS",
+                registered_website="acmegroup.no",
+                registered_domain="acmegroup.no",
+            ),
+            page(
+                "Acme Norge AS",
+                links=["https://www.facebook.com/acmegroup/"],
+                url="https://acmegroup.no/",
+            ),
+        )
+        self.assertEqual(links, [])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -109,7 +109,6 @@ def collect_social_links(
             url,
             company_name=identity.name,
             previous_names=identity.previous_names,
-            registered_website=identity.registered_website,
         ):
             continue
         key = (account[0], account[1].lower())

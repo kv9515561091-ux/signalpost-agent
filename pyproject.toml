@@ -32,6 +32,7 @@ dev = [
 [project.scripts]
 signalpost = "src.__main__:main"
 signalpost-batch = "src.batch_cli:main"
+signalpost-contract = "src.contract_cli:main"
 
 [tool.setuptools]
 # `src` is the package itself here, not a src-layout parent directory:
