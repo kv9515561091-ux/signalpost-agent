@@ -47,6 +47,17 @@ SOURCE_CLASSES = {
     "unverified_web_content": "other",
 }
 
+# Claim availability vocabulary from OUTPUT_CONTRACT.md.  ``available``
+# always comes from a sourced claim; the other states describe a source
+# that was checked and produced nothing, or could not be checked.
+CLAIM_STATES = {
+    "not_available",
+    "blocked",
+    "not_applicable",
+    "ambiguous",
+    "failed",
+}
+
 
 def utc_now() -> str:
     """Return an ISO-8601 UTC timestamp with the contract's ``Z`` suffix."""
@@ -171,11 +182,78 @@ def _content_sha256(item: dict[str, Any], span: str) -> str:
 
     The profile does not retain full page bytes, so this is the digest of
     the exact excerpt the claim was taken from, not of an unrecorded page.
+    A caller that captured the full snapshot can pass ``snapshot_sha256``
+    and that digest is preferred.
     """
+    snapshot = str(item.get("snapshot_sha256") or "")
+    if snapshot:
+        return snapshot
     material = span
     if not material:
         material = f"{item.get('source_url', '')}\n{item.get('retrieved_at', '')}"
     return hashlib.sha256(material.encode("utf-8")).hexdigest()
+
+
+_EXTRACTION_METHODS = {
+    "official_registry": "api-json",
+    "official_registry_roles": "api-json",
+    "official_subunits": "csv-snapshot",
+    "official_annual_accounts": "pdf-text",
+    "official_company_website": "html-text",
+    "news_source": "html-text",
+    "reputable_business_database": "html-text",
+    "search_result": "search-result",
+    "unverified_web_content": "html-text",
+}
+
+
+def _extraction_method(item: dict[str, Any]) -> str:
+    explicit = item.get("extraction_method")
+    if explicit:
+        return str(explicit)
+    source_type = str(item.get("source_type") or "")
+    return _EXTRACTION_METHODS.get(source_type, "html-text")
+
+
+def _snapshot(
+    item: dict[str, Any],
+    *,
+    source_url: str,
+    content_sha256: str,
+    span: str,
+) -> dict[str, Any]:
+    """The immutable-source reference a reviewer can re-check.
+
+    The raw bytes live in the crawl cache keyed by URL; this record pins
+    what was read: URL, retrieval time, content hash and extraction
+    method.  Two runs over the same snapshot produce the same id.
+    """
+    return {
+        "id": f"snap-{content_sha256[:16]}",
+        "source_url": source_url,
+        "retrieved_at": item.get("retrieved_at"),
+        "content_sha256": content_sha256,
+        "extraction_method": _extraction_method(item),
+        "claim_span": span,
+    }
+
+
+def _evidence_id(organisation_number: str, item: dict[str, Any], span: str) -> str:
+    """A stable evidence id derived from what the evidence says.
+
+    Positional ids (``ev-org-0001``) shift whenever extraction order
+    changes, which makes a rerun look like new evidence.  Hashing the
+    claim's identity keeps ids stable across refreshes.
+    """
+    material = "\x1f".join(
+        (
+            str(item.get("field") or ""),
+            str(item.get("source_url") or ""),
+            span,
+        )
+    )
+    digest = hashlib.sha256(material.encode("utf-8")).hexdigest()[:12]
+    return f"ev-{organisation_number}-{digest}"
 
 
 def _availability(value: Any) -> str:
@@ -197,22 +275,34 @@ def _evidence_for_profile(
 
     claims: list[dict[str, Any]] = []
     evidence: list[dict[str, Any]] = []
-    for index, item in enumerate(raw_items, start=1):
-        evidence_id = f"ev-{organisation_number}-{index:04d}"
+    seen_ids: dict[str, int] = {}
+    for item in raw_items:
         span = _span(item)
+        base_id = _evidence_id(organisation_number, item, span)
+        occurrence = seen_ids.get(base_id, 0) + 1
+        seen_ids[base_id] = occurrence
+        evidence_id = base_id if occurrence == 1 else f"{base_id}-{occurrence}"
         source_url = str(item.get("source_url") or "")
         source_type = str(item.get("source_type") or "")
+        content_sha256 = _content_sha256(item, span)
         record = {
             "id": evidence_id,
             "source_url": source_url,
             "source_class": source_class(source_type),
             "retrieved_at": item.get("retrieved_at"),
-            "content_sha256": _content_sha256(item, span),
+            "content_sha256": content_sha256,
             "claim_span": span,
             "field": item.get("field"),
             "source_type": source_type,
             "source_tier": item.get("source_tier"),
             "confidence": item.get("confidence"),
+            "extraction_method": _extraction_method(item),
+            "snapshot": _snapshot(
+                item,
+                source_url=source_url,
+                content_sha256=content_sha256,
+                span=span,
+            ),
         }
         evidence.append(record)
 
@@ -230,6 +320,26 @@ def _evidence_for_profile(
         if item.get("reporting_period") is not None:
             claim["reporting_period"] = item["reporting_period"]
         claims.append(claim)
+
+    # Families that were checked and produced nothing must say so.  A
+    # missing row reads as "never looked"; an explicit state is checkable.
+    claimed_fields = {claim["field"] for claim in claims}
+    availability = profile.get("availability")
+    if isinstance(availability, dict):
+        for field_name, state in sorted(availability.items()):
+            if field_name in claimed_fields or state not in CLAIM_STATES:
+                continue
+            claims.append(
+                {
+                    "field": field_name,
+                    "value": None,
+                    "availability": state,
+                    "confidence": 0.0,
+                    "evidence_ids": [],
+                    "source_url": None,
+                    "retrieved_at": None,
+                }
+            )
 
     return claims, evidence
 
@@ -335,6 +445,28 @@ def _organisation_number(profile: dict[str, Any]) -> str:
     return ""
 
 
+def _synthesis(profile: dict[str, Any], *, claim_count: int) -> dict[str, Any]:
+    """The reviewer-facing read of the record, above the raw claims."""
+    explanation = profile.get("explanation")
+    text = ""
+    generated_by = "deterministic"
+    if isinstance(explanation, dict):
+        text = str(explanation.get("text") or "")
+        generated_by = str(explanation.get("generated_by") or "deterministic")
+    changes = profile.get("changes")
+    changed = len(changes) if isinstance(changes, list) else 0
+    if changed:
+        changes_summary = f"{changed} field(s) changed since the previous run"
+    else:
+        changes_summary = "No changes recorded since the previous run"
+    return {
+        "summary": text,
+        "changes_summary": changes_summary,
+        "generated_by": generated_by,
+        "claim_count": claim_count,
+    }
+
+
 def envelope_for(
     profile: dict[str, Any],
     *,
@@ -361,6 +493,7 @@ def envelope_for(
         },
         "claims": claims,
         "evidence": evidence,
+        "synthesis": _synthesis(profile, claim_count=len(claims)),
         "changes": profile.get("changes") or [],
         "errors": errors,
         "operations": {

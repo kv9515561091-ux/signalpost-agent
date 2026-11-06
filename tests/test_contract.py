@@ -136,6 +136,191 @@ class EnvelopeTests(unittest.TestCase):
         ).hexdigest()
         self.assertEqual(envelope["evidence"][0]["content_sha256"], expected)
 
+    def test_evidence_carries_a_snapshot_reference(self):
+        envelope = contract.envelope_for(
+            _profile(),
+            run_id="run-1",
+            started_at="2026-01-01T00:00:00Z",
+            completed_at="2026-01-01T00:00:03Z",
+        )
+        evidence = envelope["evidence"][0]
+        snapshot = evidence["snapshot"]
+        self.assertTrue(snapshot["id"].startswith("snap-"))
+        self.assertEqual(
+            snapshot["source_url"],
+            "https://data.brreg.no/enheter/123456789",
+        )
+        self.assertEqual(snapshot["retrieved_at"], "2026-01-01T00:00:00Z")
+        self.assertEqual(
+            snapshot["content_sha256"], evidence["content_sha256"]
+        )
+        self.assertEqual(snapshot["extraction_method"], "api-json")
+
+    def test_full_snapshot_hash_is_preferred_when_present(self):
+        profile = _profile()
+        profile["evidence"][0]["snapshot_sha256"] = "a" * 64
+        envelope = contract.envelope_for(
+            profile,
+            run_id="run-1",
+            started_at="2026-01-01T00:00:00Z",
+            completed_at="2026-01-01T00:00:03Z",
+        )
+        evidence = envelope["evidence"][0]
+        self.assertEqual(evidence["content_sha256"], "a" * 64)
+        self.assertEqual(evidence["snapshot"]["content_sha256"], "a" * 64)
+
+    def test_evidence_ids_are_stable_when_only_timestamps_change(self):
+        first = _profile()
+        second = json.loads(json.dumps(first))
+        second["evidence"][0]["retrieved_at"] = "2026-02-01T00:00:00Z"
+        second["facts"][0]["retrieved_at"] = "2026-02-01T00:00:01Z"
+        second["retrieved_at"] = "2026-02-01T00:00:02Z"
+
+        def ids(profile):
+            envelope = contract.envelope_for(
+                profile,
+                run_id="run-1",
+                started_at="2026-01-01T00:00:00Z",
+                completed_at="2026-01-01T00:00:03Z",
+            )
+            return {
+                claim["field"]: claim["evidence_ids"][0]
+                for claim in envelope["claims"]
+            }
+
+        self.assertEqual(ids(first), ids(second))
+
+    def test_evidence_ids_survive_evidence_reordering(self):
+        first = _profile()
+        second = json.loads(json.dumps(first))
+        second["evidence"], second["facts"] = second["facts"], second["evidence"]
+
+        def ids(profile):
+            envelope = contract.envelope_for(
+                profile,
+                run_id="run-1",
+                started_at="2026-01-01T00:00:00Z",
+                completed_at="2026-01-01T00:00:03Z",
+            )
+            return {
+                claim["field"]: claim["evidence_ids"][0]
+                for claim in envelope["claims"]
+            }
+
+        self.assertEqual(ids(first), ids(second))
+
+    def test_rerun_is_idempotent_modulo_timestamps(self):
+        first = _profile()
+        second = json.loads(json.dumps(first))
+        second["evidence"][0]["retrieved_at"] = "2026-02-01T00:00:00Z"
+        second["facts"][0]["retrieved_at"] = "2026-02-01T00:00:01Z"
+        second["retrieved_at"] = "2026-02-01T00:00:02Z"
+
+        def stable(profile):
+            envelope = contract.envelope_for(
+                profile,
+                run_id="run-1",
+                started_at="2026-01-01T00:00:00Z",
+                completed_at="2026-01-01T00:00:03Z",
+            )
+            claims = [
+                {
+                    key: claim.get(key)
+                    for key in (
+                        "field",
+                        "value",
+                        "availability",
+                        "evidence_ids",
+                        "source_url",
+                    )
+                }
+                for claim in envelope["claims"]
+            ]
+            evidence = [
+                {
+                    key: item.get(key)
+                    for key in (
+                        "id",
+                        "source_url",
+                        "source_class",
+                        "content_sha256",
+                        "claim_span",
+                        "field",
+                    )
+                }
+                for item in envelope["evidence"]
+            ]
+            return claims, evidence
+
+        self.assertEqual(stable(first), stable(second))
+
+    def test_synthesis_summarises_the_record(self):
+        profile = _profile()
+        profile["explanation"] = {
+            "text": "EXAMPLE AS is a registered company.",
+            "generated_by": "llm",
+        }
+        envelope = contract.envelope_for(
+            profile,
+            run_id="run-1",
+            started_at="2026-01-01T00:00:00Z",
+            completed_at="2026-01-01T00:00:03Z",
+        )
+        synthesis = envelope["synthesis"]
+        self.assertEqual(
+            synthesis["summary"], "EXAMPLE AS is a registered company."
+        )
+        self.assertEqual(synthesis["generated_by"], "llm")
+        self.assertEqual(
+            synthesis["claim_count"], len(envelope["claims"])
+        )
+        self.assertIn("1 field", synthesis["changes_summary"])
+
+    def test_checked_empty_family_emits_not_available(self):
+        profile = _profile()
+        profile["availability"] = {"jobs": "not_available"}
+        envelope = contract.envelope_for(
+            profile,
+            run_id="run-1",
+            started_at="2026-01-01T00:00:00Z",
+            completed_at="2026-01-01T00:00:03Z",
+        )
+        jobs = [claim for claim in envelope["claims"] if claim["field"] == "jobs"]
+        self.assertEqual(len(jobs), 1)
+        self.assertEqual(jobs[0]["availability"], "not_available")
+        self.assertIsNone(jobs[0]["value"])
+        self.assertEqual(jobs[0]["evidence_ids"], [])
+
+    def test_availability_does_not_duplicate_a_sourced_claim(self):
+        profile = _profile()
+        profile["availability"] = {"company_name": "not_available"}
+        envelope = contract.envelope_for(
+            profile,
+            run_id="run-1",
+            started_at="2026-01-01T00:00:00Z",
+            completed_at="2026-01-01T00:00:03Z",
+        )
+        names = [
+            claim
+            for claim in envelope["claims"]
+            if claim["field"] == "company_name"
+        ]
+        self.assertEqual(len(names), 1)
+        self.assertEqual(names[0]["availability"], "available")
+
+    def test_unknown_availability_state_is_ignored(self):
+        profile = _profile()
+        profile["availability"] = {"jobs": "maybe"}
+        envelope = contract.envelope_for(
+            profile,
+            run_id="run-1",
+            started_at="2026-01-01T00:00:00Z",
+            completed_at="2026-01-01T00:00:03Z",
+        )
+        self.assertFalse(
+            any(claim["field"] == "jobs" for claim in envelope["claims"])
+        )
+
     def test_module_states_are_terminal_and_record_errors(self):
         envelope = contract.envelope_for(
             _profile(),
