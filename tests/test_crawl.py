@@ -129,6 +129,10 @@ class RankingTests(unittest.TestCase):
         plan = plan_crawl(HOME, ["/tjenester", "/om-oss"], DOMAIN)
         self.assertEqual(plan[0], "https://example.no/om-oss")
 
+    def test_careers_outranks_contact_so_jobs_are_reachable(self):
+        plan = plan_crawl(HOME, ["/kontakt", "/karriere"], DOMAIN)
+        self.assertEqual(plan[0], "https://example.no/karriere")
+
     def test_unlabelled_pages_are_still_followed(self):
         # These sites are not built to a template. An allowlist would
         # drop every company whose paths differ, so unknown paths are

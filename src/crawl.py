@@ -38,7 +38,7 @@ _POSITIVE_HINTS: tuple[tuple[str, int], ...] = (
     (r"tjenester|services|what-we-do|virksomhet|products", 35),
     (r"kontakt|contact", 30),
     (r"organisasjon|historie|history", 25),
-    (r"karriere|careers|jobb", 15),
+    (r"karriere|careers|jobb|stillinger", 32),
 )
 
 # Checked first, and deliberately so. These paths share vocabulary with
@@ -46,7 +46,9 @@ _POSITIVE_HINTS: tuple[tuple[str, int], ...] = (
 # but describe nothing about the business. Evaluating positives first
 # would let every one of them win on the substring it happens to share.
 _NEGATIVE_HINTS: tuple[tuple[str, int], ...] = (
-    (r"press|news|nyheter|media|blogg", -50),
+    # News is allowed but ranked below every stable page: a dated press
+    # item is worth one recent-development fact, never a whole walk.
+    (r"press|news|nyheter|media|blogg", 5),
     (r"personale|ansatte|ledelse|team", -60),
     (r"personvern|privacy|cookie|tilgjengelighet|accessibility|"
      r"vilk(a|å)r|terms|ansvarserkl(a|æ)ring|erkl(a|æ)ring|"
