@@ -64,7 +64,7 @@ python run_contract.py --input companies.txt --expected-count 1000 \
   --underenheter data/brreg_underenheter.csv.gz \
   --verify-websites
 
-python -m unittest discover -s tests               # 648 tests
+python -m unittest discover -s tests               # 673 tests
 ruff check .                                         # lint
 mypy                                                 # types (advisory)
 ```
@@ -417,7 +417,7 @@ src/
   __main__.py      single-company CLI (`signalpost`)
 run_batch.py       shim preserving `python run_batch.py`
 run_contract.py    shim preserving `python run_contract.py`
-tests/             648 tests, no network required
+tests/             673 tests, no network required
 tools/              record_fixture.py regenerates the end-to-end recording
 ```
 
@@ -469,7 +469,7 @@ purpose: the project shipped hundreds of tests and no type checking at all, and
 its first pass found nine issues — one of them a live bug, where the
 crawl gate compared an optional domain against a string and silently
 disabled the crawl for any company without a registered website. It now
-passes on all 37 source files. Making it a gate is a deliberate,
+passes on all 38 source files. Making it a gate is a deliberate,
 incremental change rather than something to flip on in the same commit
 that introduces it.
 

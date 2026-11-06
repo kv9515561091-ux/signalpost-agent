@@ -132,7 +132,7 @@ contract default.
 |---|---|
 | Brreg requests | 300 |
 | Search calls | ~200 (2 per company; cached by query) |
-| Total outbound requests | **~1,700–1,850** |
+| Total outbound requests | **1,616** (measured) |
 | LLM calls | ~600–800 |
 | NVIDIA spend | $0 (hosted build endpoint) |
 | **Billable external** | **~200 TinyFish calls** |
@@ -158,29 +158,18 @@ Measured on a fifty-company run with the same shape as the daily test
 With prefetch enabled, the same set finished in **21 minutes** (1,017
 requests, including a re-search after the one-hour cache expired).
 
-A hundred-company rehearsal of the daily path at the 10-page cap
-completed 99 of 100 in **40.4 minutes** and 1,654 requests: 1,681
-facts, 99 narratives, no fact without a verbatim quote, and no LLM
-rate-limit failure. The one failure was a twenty-second Brreg read
-timeout; because the run is resumable, a second pass retried only that
-company (17 requests, 97 seconds) and finished **100 of 100, with 1,684
-facts and 100 narratives** (100 records; the input list carried a
-BOM-prefixed duplicate on the first line, fixed in the second rehearsal).
-Primary run plus retry stayed inside both
-the 2,000-request ceiling and the 45-minute limit. The 10-page cap
-trades roughly 8% of facts against the twelve-page benchmark for that
-headroom. A 138-company corpus build at 14 pages produced 616 facts
-(4.5 per company) with zero unsupported facts, which is the
-registry-first baseline the enriched subset is measured against.
-
-A second rehearsal, after fixing the BOM, ran the cleaned 100-unique
-list: **100 unique orgs**, 100 explanations, 97 with at least one
-verified web fact, **0 errors**, **1,736 facts** across 1,133 web
-sources. Two completed passes used 686 and 664 requests and each stayed
-under the 45-minute and 2,000-request limits; the initial interrupted
-pass supplied the first 30 profiles. The three profiles with no web
-fact are two foreign entities and one association whose candidate
-sources were all blocked or timed out; the reason is in
+A hundred-company rehearsal of the daily path at the 10-page cap ran the
+cleaned 100-unique list end to end: **100 of 100 returned**, **3,536
+claims** (1,064 of them extracted web facts, 10.6 per company), 3,447
+evidence records, and **1,616/2,000 requests** in **20.2 minutes**.
+80 companies carry at least one web fact, 1,061 web sources were read,
+every fact quotes the page it came from, and every profile carries a
+registry-backed explanation. Evidence ids and snapshots stay the same
+across reruns, and a family that was probed and produced nothing is
+published as an explicit availability claim rather than a silent gap:
+89 such claims here (31 blocked, 50 not available, 8 failed). Five
+companies publish a `careers_url`; none of this random hundred listed
+openings on the day. A company with no web fact says why in
 `retrieval_errors`, and the explanation falls back to the registry
 spine.
 
@@ -350,9 +339,9 @@ the next run its comparison.
 ## 10. Verification
 
 ```bash
-python -m unittest discover -s tests    # 648 tests
+python -m unittest discover -s tests    # 673 tests
 ruff check .                            # lint, enforced in CI
-mypy                                    # 37 source files, no issues
+mypy                                    # 38 source files, no issues
 ```
 
 CI runs the suite, ruff and mypy on Python 3.10–3.13, installs the
