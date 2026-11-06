@@ -23,6 +23,7 @@ from __future__ import annotations
 import os
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
+from urllib.parse import urlparse, urlunparse
 
 from pydantic import BaseModel, Field
 
@@ -35,9 +36,11 @@ from src.explain import explain
 from src.extract import ExtractedFact
 from src.financials import get_financials
 from src.identity import CompanyIdentity
+from src.jobs import careers_index_links, is_careers_url, read_careers_page
 from src.orgnumber import InvalidCompanyNumber, normalize, validate
 from src.roles import get_roles
 from src.social import is_social_url
+from src.sources import get_domain
 from src.website import collect_social_links, verify_registered_page
 
 __all__ = [
@@ -206,6 +209,9 @@ class CompanyProfile(BaseModel):
     # the caller might otherwise mistake for "the company has none of
     # these" is recorded here explicitly.
     retrieval_errors: list[str] = Field(default_factory=list)
+    # Families that were checked and produced nothing, in the contract's
+    # availability vocabulary. Absent means the family was not checked.
+    availability: dict[str, str] = Field(default_factory=dict)
     retrieved_at: str | None = None
 
     @property
@@ -700,6 +706,29 @@ def _apply_registered_website(
     _merge_social_links(profile, collect_social_links(identity, page))
 
 
+def _careers_probe(website: str | None) -> str | None:
+    """One guessed careers URL on the verified domain.
+
+    Careers links are frequently scripted into a footer that the bounded
+    crawl never reaches, so the two common paths are tried directly. A
+    404 costs one request and is recorded; a hit is the only way many
+    small companies ever expose an opening.
+    """
+    if not website:
+        return None
+    url = (
+        website
+        if website.startswith(("http://", "https://"))
+        else f"https://{website}"
+    )
+    parsed = urlparse(url)
+    if not parsed.netloc:
+        return None
+    host = (parsed.hostname or "").lower()
+    path = "/karriere" if host.endswith(".no") else "/careers"
+    return urlunparse((parsed.scheme or "https", parsed.netloc, path, "", "", ""))
+
+
 def _apply_extraction(
     profile: CompanyProfile,
     identity: CompanyIdentity,
@@ -748,6 +777,31 @@ def _apply_extraction(
     # only seeds may enqueue follow-ups, which caps the walk at depth 1.
     queue: list[tuple[WebSource, bool]] = [(s, True) for s in candidates]
 
+    # A careers page is often reachable only by guessing its path: the
+    # footer link may be JavaScript, or the walk may spend its five
+    # follow-ups on About/Services first. One probe is cheap relative to
+    # losing the whole jobs family.
+    if identity.registered_domain and not any(
+        is_careers_url(source.url) for source in candidates
+    ):
+        probe = _careers_probe(identity.registered_website or profile.website)
+        if probe:
+            queue.append(
+                (
+                    WebSource(
+                        url=probe,
+                        domain=identity.registered_domain,
+                        tier=2,
+                        source_type="official_company_website",
+                        confidence=0.8,
+                        identity_basis="registered_website+careers_probe",
+                        identity_signals={},
+                        retrieved_at="",
+                    ),
+                    False,
+                )
+            )
+
     fetched: set[str] = set()
     pages_read = 0
     # Counted separately from ``pages_read`` because the ceiling has to
@@ -761,6 +815,52 @@ def _apply_extraction(
     # Carried across pages so the same statement from two directories is
     # published once.
     accepted_facts: list[ExtractedFact] = []
+
+    def enqueue(
+        source: WebSource,
+        url: str,
+        identity_basis: str,
+        page: Any,
+    ) -> None:
+        """Queue one same-domain follow-up for identity-checked reading."""
+        if url in fetched:
+            return
+        if any(queued.url == url for queued, _seed in queue):
+            return
+        follow_up = WebSource(
+            url=url,
+            domain=source.domain,
+            tier=source.tier,
+            source_type=source.source_type,
+            confidence=source.confidence,
+            identity_basis=identity_basis,
+            identity_signals=dict(source.identity_signals),
+            retrieved_at=page.retrieved_at,
+        )
+        queue.append((follow_up, False))
+        profile.web_sources.append(follow_up)
+
+    def enqueue_careers_index(source: WebSource, page: Any) -> None:
+        """Follow a careers page's own link to its vacancy list.
+
+        Many careers landing pages list nothing themselves and link a
+        separate vacancies index; that page is where the openings are. A
+        landing page is allowed to hand over the link even when its own
+        identity could not be established: the link is only a candidate,
+        and the target is verified before it can publish.
+        """
+        for url in careers_index_links(
+            page.url,
+            page.links,
+            has_postings=bool(
+                read_careers_page(page.text, page.url, page.links).posting_links
+            ),
+        ):
+            if identity.registered_domain and (
+                get_domain(url) != identity.registered_domain
+            ):
+                continue
+            enqueue(source, url, f"{source.identity_basis}+careers_index", page)
 
     def fill_batch() -> list[tuple[WebSource, Any]]:
         """Fetch and plan the next batch of pages.
@@ -787,6 +887,8 @@ def _apply_extraction(
             try:
                 page = fetch_page(source.url)
             except UnsafeUrl as exc:
+                if source.identity_basis.endswith("careers_probe"):
+                    profile.availability.setdefault("jobs", "blocked")
                 profile.retrieval_errors.append(
                     f"page {source.domain}: blocked ({exc})"
                 )
@@ -795,6 +897,8 @@ def _apply_extraction(
                 # Recorded, not hidden: a skipped source is a gap in
                 # coverage and the profile should say where the gap came
                 # from.
+                if source.identity_basis.endswith("careers_probe"):
+                    profile.availability.setdefault("jobs", "blocked")
                 profile.retrieval_errors.append(
                     f"page {source.domain}: not requested ({exc})"
                 )
@@ -804,6 +908,16 @@ def _apply_extraction(
                 # nothing about whether to retry, switch model, or move
                 # on.
                 detail = _describe_fetch_failure(exc)
+                if source.identity_basis.endswith("careers_probe"):
+                    if "404" in detail:
+                        profile.availability.setdefault("jobs", "not_available")
+                    elif any(
+                        token in detail
+                        for token in ("403", "429", "TLS", "SSL", "block")
+                    ):
+                        profile.availability.setdefault("jobs", "blocked")
+                    else:
+                        profile.availability.setdefault("jobs", "failed")
                 profile.retrieval_errors.append(
                     f"page {source.domain}: {detail}"
                 )
@@ -842,14 +956,26 @@ def _apply_extraction(
                     collect_social_links(identity, page),
                 )
             elif not is_seed and on_registered_domain:
-                check = verify_registered_page(identity, page)
-                if not check.verified:
-                    profile.retrieval_errors.append(
-                        f"page {source.domain}: follow-up omitted because "
-                        "it does not carry this company's organization "
-                        "number or exact name"
-                    )
-                    continue
+                # A careers page on the verified domain inherits the
+                # homepage's identity proof. Posting pages rarely repeat
+                # the organization number or the registered name, and
+                # requiring them was why the jobs family was empty.
+                if not (
+                    profile.website_verified and is_careers_url(page.url)
+                ):
+                    check = verify_registered_page(identity, page)
+                    if not check.verified:
+                        profile.retrieval_errors.append(
+                            f"page {source.domain}: follow-up omitted because "
+                            "it does not carry this company's organization "
+                            "number or exact name"
+                        )
+                        if is_careers_url(page.url):
+                            enqueue_careers_index(source, page)
+                        continue
+
+            if on_registered_domain and is_careers_url(page.url):
+                enqueue_careers_index(source, page)
 
             # Follow-ups, planned only from a seed on the registered
             # domain. Comparing against the *identity's* domain rather
@@ -867,35 +993,11 @@ def _apply_extraction(
                     max_links=max_crawl_links,
                     already_seen=fetched,
                 ):
-                    queue.append(
-                        (
-                            WebSource(
-                                url=url,
-                                domain=source.domain,
-                                tier=source.tier,
-                                source_type=source.source_type,
-                                # The basis records how the domain was
-                                # found; the page is still re-checked
-                                # below before it can publish facts.
-                                confidence=source.confidence,
-                                identity_basis=f"{source.identity_basis}+same_domain",
-                                identity_signals=dict(source.identity_signals),
-                                retrieved_at=page.retrieved_at,
-                            ),
-                            False,
-                        )
-                    )
-                    profile.web_sources.append(
-                        WebSource(
-                            url=url,
-                            domain=source.domain,
-                            tier=source.tier,
-                            source_type=source.source_type,
-                            confidence=source.confidence,
-                            identity_basis=f"{source.identity_basis}+same_domain",
-                            identity_signals=dict(source.identity_signals),
-                            retrieved_at=page.retrieved_at,
-                        )
+                    enqueue(
+                        source,
+                        url,
+                        f"{source.identity_basis}+same_domain",
+                        page,
                     )
 
             batch.append((source, page))
@@ -931,7 +1033,7 @@ def _apply_extraction(
             already_accepted=accepted_facts,
         )
 
-        for (_source, page), report in zip(batch, reports, strict=True):
+        for (source, page), report in zip(batch, reports, strict=True):
             for fact in report.facts:
                 accepted_facts.append(fact)
                 profile.facts.append(
@@ -946,6 +1048,40 @@ def _apply_extraction(
                         source_type=fact.source_type,
                         as_of=fact.published_date,
                     )
+                )
+
+            if is_careers_url(page.url):
+                findings = read_careers_page(page.text, page.url, page.links)
+                profile.facts.append(
+                    FactRecord(
+                        field="careers_url",
+                        value=findings.careers_url,
+                        source_url=page.url,
+                        retrieved_at=page.retrieved_at,
+                        evidence_text=page.title or findings.careers_url,
+                        confidence=0.8,
+                        source_tier=source.tier,
+                        source_type=source.source_type,
+                    )
+                )
+                if findings.titles:
+                    for title in findings.titles:
+                        profile.facts.append(
+                            FactRecord(
+                                field="job_openings",
+                                value=title,
+                                source_url=page.url,
+                                retrieved_at=page.retrieved_at,
+                                evidence_text=findings.snippet or title,
+                                confidence=0.6,
+                                source_tier=source.tier,
+                                source_type=source.source_type,
+                            )
+                        )
+                else:
+                    profile.availability.setdefault("jobs", "not_available")
+                profile.sources = list(
+                    dict.fromkeys([*profile.sources, page.url])
                 )
 
             if report.rejected:

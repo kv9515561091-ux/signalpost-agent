@@ -713,5 +713,110 @@ class BatchPageWalkTests(unittest.TestCase):
         self._assert_two_facts_from_both_pages(calls, profile)
 
 
+class CareersIndexWalkTests(unittest.TestCase):
+    """A careers page that lists nothing still leads to its vacancy index.
+
+    Live check on Kongsberg: the careers landing page names no openings
+    and does not repeat the registered name, while the vacancies page it
+    links carries 68 postings. Reading the index is the difference
+    between an empty jobs family and a populated one.
+    """
+
+    landing = "https://example.no/karriere"
+    index = "https://example.no/karriere/ledige-stillinger"
+
+    def test_vacancy_index_is_read_and_titled(self):
+        fetched: list[str] = []
+
+        def fetch(url):
+            fetched.append(url)
+            if url == self.landing:
+                return Page(
+                    url=url,
+                    title="Karriere",
+                    text="Bli med oss.",
+                    retrieved_at="2026-10-13T10:00:03+00:00",
+                    links=["/karriere/ledige-stillinger", "/om-oss"],
+                )
+            if url == self.index:
+                return Page(
+                    url=url,
+                    title="Ledige stillinger",
+                    text="Org.nr 989061593\nLedige stillinger",
+                    retrieved_at="2026-10-13T10:00:04+00:00",
+                    links=[
+                        "/stillinger/1234-senior-ingenior",
+                        "/stillinger/5678-prosjektleder",
+                    ],
+                )
+            return Page(
+                url=url,
+                title="About",
+                text="- G- GROUP AS\nWe invest.",
+                retrieved_at="2026-10-13T10:00:03+00:00",
+                links=[],
+            )
+
+        def model(schema, *, system, user):
+            return llm.LLMResult(
+                data={"facts": []},
+                model="m",
+                provider="openai_compatible",
+                finish_reason="stop",
+            )
+
+        with ExitStack() as stack:
+            stack.enter_context(
+                patch("src.agent.get_company", return_value=COMPANY)
+            )
+            stack.enter_context(
+                patch("src.agent.get_roles", return_value=ROLES)
+            )
+            stack.enter_context(
+                patch("src.agent.get_financials", return_value=FINANCIALS)
+            )
+            stack.enter_context(
+                patch(
+                    "src.agent.discover_sources",
+                    return_value=[BatchPageWalkTests._source(0)],
+                )
+            )
+            stack.enter_context(
+                patch("src.page.fetch_page", side_effect=fetch)
+            )
+            stack.enter_context(
+                patch("src.extract.llm.is_available", return_value=True)
+            )
+            stack.enter_context(
+                patch("src.extract.llm.complete_json", side_effect=model)
+            )
+            profile = build_profile(
+                "989061593",
+                include_web=True,
+                include_extraction=True,
+                max_sources=1,
+                max_pages=3,
+            )
+
+        self.assertIn(self.index, fetched)
+        self.assertIn(self.landing, fetched)
+
+        titles = sorted(
+            fact.value for fact in profile.facts if fact.field == "job_openings"
+        )
+        self.assertEqual(titles, ["Prosjektleder", "Senior Ingenior"])
+
+        careers_urls = [
+            fact.value for fact in profile.facts if fact.field == "careers_url"
+        ]
+        self.assertEqual(careers_urls, [self.index])
+
+        self.assertNotIn("jobs", profile.availability)
+        self.assertTrue(
+            any("follow-up omitted" in error for error in profile.retrieval_errors),
+            profile.retrieval_errors,
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
