@@ -50,6 +50,10 @@ _WHITESPACE = re.compile(r"[ \t\r\f\v]+")
 _BLANK_LINES = re.compile(r"\n{3,}")
 _HREF = re.compile(r"""<a\b[^>]*?\shref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))""",
                    re.IGNORECASE)
+_ANCHOR = re.compile(
+    r"""<a\b[^>]*?\shref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))[^>]*>(.*?)</a>""",
+    re.IGNORECASE | re.DOTALL,
+)
 
 
 @dataclass
@@ -60,6 +64,9 @@ class Page:
     retrieved_at: str
     truncated: bool = False
     links: list[str] = field(default_factory=list)
+    # Anchor text keyed by raw href. A link's label is the only part of
+    # the link that can be quoted as evidence, so it is captured with it.
+    anchor_text: dict[str, str] = field(default_factory=dict)
 
 
 def extract_links(markup: str) -> list[str]:
@@ -86,6 +93,24 @@ def extract_links(markup: str) -> list[str]:
         seen.setdefault(href, None)
 
     return list(seen)
+
+
+def extract_anchors(markup: str) -> dict[str, str]:
+    """Return ``{href: visible label}`` for anchors that carry text."""
+    labels: dict[str, str] = {}
+    for match in _ANCHOR.finditer(markup):
+        href = match.group(1) or match.group(2) or match.group(3)
+        if not href:
+            continue
+        href = html.unescape(href).strip()
+        if not href or href.startswith("#"):
+            continue
+        label = " ".join(
+            html.unescape(_TAG.sub(" ", match.group(4))).split()
+        )
+        if label:
+            labels.setdefault(href, label)
+    return labels
 
 
 def html_to_text(markup: str) -> tuple[str, str]:
@@ -141,6 +166,7 @@ def fetch_page(url: str, max_text_chars: int = MAX_TEXT_CHARS) -> Page:
         retrieved_at=_iso_now(),
         truncated=truncated,
         links=extract_links(markup),
+        anchor_text=extract_anchors(markup),
     )
 
 

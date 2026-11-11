@@ -314,6 +314,11 @@ def process_companies(
     max_crawl_links: int = DEFAULT_MAX_CRAWL_LINKS,
     company_records: dict[str, dict[str, Any]] | None = None,
     subunit_records: dict[str, list[dict[str, Any]]] | None = None,
+    nav_index: Any | None = None,
+    website_check_orgs: set[str] | None = None,
+    include_news: bool = False,
+    news_orgs: set[str] | None = None,
+    wikidata_entities: dict[str, Any] | None = None,
     resume: bool = False,
     workers: int = DEFAULT_WORKERS,
     deadline: float | None = None,
@@ -342,6 +347,13 @@ def process_companies(
         subunit_records: Pre-fetched underenhet records keyed by parent
             organisation number, normally from a frozen export. Adds
             registered workplaces without a live request per company.
+        nav_index: Pre-harvested NAV vacancy index shared by the whole
+            batch. Read-only and thread-safe; costs no request per
+            company.
+        website_check_orgs: Restrict the registry-website fetch to these
+            organisation numbers. ``None`` checks every company. A large
+            batch cannot afford one fetch per company inside the request
+            ceiling, so the caller chooses who gets the richer read.
         resume: Reuse completed companies from a previous run under the
             same settings. Companies that errored are retried, since a
             transient failure should not be permanent.
@@ -361,6 +373,14 @@ def process_companies(
             per-company reporting. With concurrency, calls arrive in
             completion order and ``index`` is the company's input
             position.
+        include_news: Look up recent press mentions in the keyless
+            Google News RSS feed. Costs one request per company.
+        news_orgs: Restrict the news lookup to these organisation
+            numbers. ``None`` looks up every company.
+        wikidata_entities: Batch-wide Wikidata resolution keyed by
+            organisation number. Costs one request for the whole run and
+            publishes external identifiers where Wikidata knows the
+            entity.
 
     Note:
         The inter-company delay is *not* sufficient rate limiting once
@@ -546,7 +566,14 @@ def process_companies(
                 raw,
                 include_web=include_web and enrichment_allowed,
                 include_extraction=include_extraction and enrichment_allowed,
-                include_website_check=include_website_check and enrichment_allowed,
+                include_website_check=(
+                    include_website_check
+                    and enrichment_allowed
+                    and (
+                        website_check_orgs is None
+                        or raw in website_check_orgs
+                    )
+                ),
                 include_narrative=include_narrative and enrichment_allowed,
                 use_llm=use_llm,
                 max_sources=max_sources,
@@ -554,8 +581,15 @@ def process_companies(
                 max_crawl_links=max_crawl_links,
                 company_record=company_record,
                 subunits=(subunit_records or {}).get(raw),
+                nav_index=nav_index,
+                include_news=(
+                    include_news
+                    and enrichment_allowed
+                    and (news_orgs is None or raw in news_orgs)
+                ),
                 include_roles=not clock_exhausted,
                 include_financials=include_financials,
+                wikidata_entity=(wikidata_entities or {}).get(raw),
             )
             record = profile.model_dump(mode="json")
             if clock_exhausted:

@@ -64,7 +64,7 @@ python run_contract.py --input companies.txt --expected-count 1000 \
   --underenheter data/brreg_underenheter.csv.gz \
   --verify-websites
 
-python -m unittest discover -s tests               # 673 tests
+python -m unittest discover -s tests               # 759 tests
 ruff check .                                         # lint
 mypy                                                 # types (advisory)
 ```
@@ -410,6 +410,10 @@ src/
   batch.py         batch runner over a list of org numbers
   batch_cli.py     batch argument parsing (`signalpost-batch`)
   bulk.py          frozen identity + underenhet exports, cached locally
+  nav_jobs.py      NAV vacancy feed snapshot + identity-gated matching
+  news.py          keyless Google News RSS, identity-gated
+  activity.py      last-activity date from dated evidence
+  wikidata.py      batch SPARQL identity (QID, LEI, website, employees)
   contract.py      terminal envelopes, claims, evidence and report checks
   contract_cli.py  competition contract CLI (`run_contract.py`)
   tinyfish_search.py  search provider adapter
@@ -417,7 +421,7 @@ src/
   __main__.py      single-company CLI (`signalpost`)
 run_batch.py       shim preserving `python run_batch.py`
 run_contract.py    shim preserving `python run_contract.py`
-tests/             673 tests, no network required
+tests/             759 tests, no network required
 tools/              record_fixture.py regenerates the end-to-end recording
 ```
 

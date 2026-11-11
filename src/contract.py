@@ -19,6 +19,7 @@ import hashlib
 import json
 import os
 import tempfile
+from collections import Counter
 from collections.abc import Iterable
 from datetime import datetime, timezone
 from pathlib import Path
@@ -41,8 +42,11 @@ SOURCE_CLASSES = {
     "official_subunits": "government_registry",
     "official_annual_accounts": "official_filing",
     "official_company_website": "company_owned",
+    "official_job_feed": "third_party_database",
     "news_source": "news",
     "reputable_business_database": "third_party_database",
+    "wikidata": "third_party_database",
+    "official_lei_registry": "third_party_database",
     "search_result": "search_result",
     "unverified_web_content": "other",
 }
@@ -200,8 +204,11 @@ _EXTRACTION_METHODS = {
     "official_subunits": "csv-snapshot",
     "official_annual_accounts": "pdf-text",
     "official_company_website": "html-text",
+    "official_job_feed": "api-json",
     "news_source": "html-text",
     "reputable_business_database": "html-text",
+    "wikidata": "api-json",
+    "official_lei_registry": "api-json",
     "search_result": "search-result",
     "unverified_web_content": "html-text",
 }
@@ -445,25 +452,165 @@ def _organisation_number(profile: dict[str, Any]) -> str:
     return ""
 
 
-def _synthesis(profile: dict[str, Any], *, claim_count: int) -> dict[str, Any]:
-    """The reviewer-facing read of the record, above the raw claims."""
+# The information families a reviewer checks, and the claim fields that
+# satisfy them. Prefix entries match any field that starts with them.
+_COVERAGE_FAMILIES: dict[str, tuple[str, ...]] = {
+    "identity": (
+        "company_name",
+        "legal_form",
+        "industry",
+        "industry_code",
+        "address",
+        "municipality",
+        "registration_date",
+        "founding_date",
+    ),
+    "contact": ("website", "phone", "email"),
+    "social": ("social_",),
+    "leadership": ("ceo_name", "chair_name", "roles", "role:"),
+    "financials": (
+        "revenue",
+        "operating_result",
+        "net_result",
+        "total_assets",
+        "total_equity",
+        "operating_margin",
+        "equity_ratio",
+    ),
+    "workforce": (
+        "employee_count",
+        "workplace_employee_count",
+        "jobs_count",
+        "job_opening",
+    ),
+    "locations": ("locations", "workplace_"),
+    "activity": ("recent_activity",),
+}
+
+# What a reader should look at first. Ordered by how much it says about
+# the company's current state.
+_HIGHLIGHT_FIELDS = (
+    "jobs_count",
+    "job_opening",
+    "recent_activity",
+    "revenue",
+    "net_result",
+    "employee_count",
+    "ceo_name",
+)
+
+
+def _family_matches(field: str, patterns: tuple[str, ...]) -> bool:
+    return any(
+        field == pattern or (pattern.endswith(":") and field.startswith(pattern))
+        or (pattern.endswith("_") and field.startswith(pattern))
+        for pattern in patterns
+    )
+
+
+def _synthesis(
+    profile: dict[str, Any],
+    *,
+    claims: list[dict[str, Any]],
+    evidence: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """The reviewer-facing read of the record, above the raw claims.
+
+    Beyond restating the profile this states what was *not* found, which
+    sources carried the record, and which information families the run
+    actually covered. A reader can judge the record without opening the
+    claims, and an empty family is visible instead of implied.
+    """
     explanation = profile.get("explanation")
     text = ""
     generated_by = "deterministic"
     if isinstance(explanation, dict):
         text = str(explanation.get("text") or "")
         generated_by = str(explanation.get("generated_by") or "deterministic")
+
     changes = profile.get("changes")
     changed = len(changes) if isinstance(changes, list) else 0
     if changed:
         changes_summary = f"{changed} field(s) changed since the previous run"
     else:
         changes_summary = "No changes recorded since the previous run"
+
+    available: list[dict[str, Any]] = [
+        claim for claim in claims if claim.get("availability") == "available"
+    ]
+    states = Counter(str(claim.get("availability")) for claim in claims)
+
+    families: list[dict[str, Any]] = []
+    present_families: list[str] = []
+    missing_families: list[str] = []
+    for family, patterns in _COVERAGE_FAMILIES.items():
+        hits = [
+            claim
+            for claim in available
+            if _family_matches(str(claim.get("field") or ""), patterns)
+        ]
+        if hits:
+            present_families.append(family)
+        else:
+            missing_families.append(family)
+        families.append(
+            {
+                "family": family,
+                "claims": len(hits),
+                "fields": sorted(
+                    {str(claim.get("field")) for claim in hits}
+                ),
+            }
+        )
+
+    unknowns = [
+        {"field": str(claim.get("field")), "state": claim.get("availability")}
+        for claim in claims
+        if claim.get("availability") != "available"
+    ]
+
+    by_class = Counter(str(item.get("source_class")) for item in evidence)
+    types_by_class: dict[str, set[str]] = {}
+    for item in evidence:
+        types_by_class.setdefault(str(item.get("source_class")), set()).add(
+            str(item.get("source_type"))
+        )
+    sources = [
+        {
+            "source_class": name,
+            "claims": count,
+            "source_types": sorted(types_by_class.get(name, set())),
+        }
+        for name, count in sorted(by_class.items())
+    ]
+
+    highlights: list[str] = []
+    for field_name in _HIGHLIGHT_FIELDS:
+        for claim in available:
+            if claim.get("field") != field_name:
+                continue
+            value = claim.get("value")
+            if value in (None, "", [], {}):
+                continue
+            highlights.append(f"{field_name}: {value}")
+            break
+        if len(highlights) >= 3:
+            break
+
     return {
         "summary": text,
+        "highlights": highlights,
         "changes_summary": changes_summary,
         "generated_by": generated_by,
-        "claim_count": claim_count,
+        "claim_count": len(claims),
+        "claim_states": dict(sorted(states.items())),
+        "sources": sources,
+        "coverage": {
+            "available_families": present_families,
+            "missing_families": missing_families,
+            "families": families,
+        },
+        "unknowns": unknowns,
     }
 
 
@@ -493,7 +640,7 @@ def envelope_for(
         },
         "claims": claims,
         "evidence": evidence,
-        "synthesis": _synthesis(profile, claim_count=len(claims)),
+        "synthesis": _synthesis(profile, claims=claims, evidence=evidence),
         "changes": profile.get("changes") or [],
         "errors": errors,
         "operations": {

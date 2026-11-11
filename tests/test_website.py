@@ -92,15 +92,17 @@ class SocialLinkCollectionTests(unittest.TestCase):
             ],
         )
         links = collect_social_links(identity(), page_obj)
+        self.assertEqual(len(links), 1)
+        self.assertEqual(links[0]["platform"], "linkedin")
+        self.assertEqual(links[0]["handle"], "g-group")
         self.assertEqual(
-            links,
-            [
-                {
-                    "platform": "linkedin",
-                    "handle": "g-group",
-                    "url": "https://www.linkedin.com/company/g-group/",
-                }
-            ],
+            links[0]["url"], "https://www.linkedin.com/company/g-group/"
+        )
+        # The verified page is recorded with the handle, because a
+        # handle with no page behind it cannot be published as a claim.
+        self.assertEqual(links[0]["source_url"], page_obj.url)
+        self.assertEqual(
+            links[0]["retrieved_at"], page_obj.retrieved_at
         )
 
     def test_relative_social_links_are_resolved(self):

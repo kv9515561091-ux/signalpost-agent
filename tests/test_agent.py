@@ -197,6 +197,113 @@ class BuildProfileTests(unittest.TestCase):
         self.assertEqual(profile.company_name, "-G- GROUP AS")
 
 
+class DerivedMetricTests(unittest.TestCase):
+    """Derived ratios must read the newest filed year, not list position.
+
+    The registry happens to return years newest-first, but that order is
+    not part of its contract. Choosing the wrong year silently publishes
+    a materially wrong figure, which is the one mistake the competition
+    treats as void, so the ordering is pinned here in both directions.
+    """
+
+    @staticmethod
+    def _accounts(order: list[str]) -> dict:
+        by_year = {
+            "2025": {
+                "fiscal_year": "2025",
+                "period_end": "2025-12-31",
+                "currency": "NOK",
+                "statement_scope": "SELSKAP",
+                "audited": True,
+                "revenue": 200000.0,
+                "net_result": 20000.0,
+                "total_assets": 100000.0,
+                "total_equity": 50000.0,
+            },
+            "2024": {
+                "fiscal_year": "2024",
+                "period_end": "2024-12-31",
+                "currency": "NOK",
+                "statement_scope": "SELSKAP",
+                "audited": True,
+                "revenue": 100000.0,
+                "net_result": 10000.0,
+                "total_assets": 80000.0,
+                "total_equity": 40000.0,
+            },
+        }
+        return {
+            "years": [by_year[year] for year in order],
+            "latest": None,
+            "currency": "NOK",
+            "source": (
+                "https://data.brreg.no/regnskapsregisteret/regnskap/989061593"
+            ),
+            "retrieved_at": "2026-11-10T10:00:00+00:00",
+        }
+
+    def _profile(self, order: list[str]):
+        with ExitStack() as stack:
+            stack.enter_context(
+                patch("src.agent.get_company", return_value=COMPANY)
+            )
+            stack.enter_context(
+                patch("src.agent.get_roles", return_value=ROLES)
+            )
+            stack.enter_context(
+                patch(
+                    "src.agent.get_financials",
+                    return_value=self._accounts(order),
+                )
+            )
+            return build_profile("989061593")
+
+    def _assert_newest_year(self, profile):
+        metrics = {fact.field: fact for fact in profile.facts}
+        growth = metrics["profile_metric_revenue_growth_yoy"]
+        self.assertAlmostEqual(growth.value, 1.0)
+        self.assertEqual(growth.reporting_period, "2025")
+        margin = metrics["profile_metric_profit_margin"]
+        self.assertAlmostEqual(margin.value, 0.1)
+        self.assertEqual(margin.reporting_period, "2025")
+        equity = metrics["profile_metric_equity_ratio"]
+        self.assertAlmostEqual(equity.value, 0.5)
+        self.assertEqual(equity.reporting_period, "2025")
+
+    def test_newest_first_input_uses_the_newest_year(self):
+        self._assert_newest_year(self._profile(["2025", "2024"]))
+
+    def test_oldest_first_input_still_uses_the_newest_year(self):
+        self._assert_newest_year(self._profile(["2024", "2025"]))
+
+    def test_no_metric_is_published_without_accounts(self):
+        with ExitStack() as stack:
+            stack.enter_context(
+                patch("src.agent.get_company", return_value=COMPANY)
+            )
+            stack.enter_context(
+                patch("src.agent.get_roles", return_value=ROLES)
+            )
+            stack.enter_context(
+                patch(
+                    "src.agent.get_financials",
+                    return_value={
+                        "years": [],
+                        "latest": None,
+                        "currency": None,
+                        "source": "https://data.brreg.no/x",
+                        "retrieved_at": "2026-11-10T10:00:00+00:00",
+                    },
+                )
+            )
+            profile = build_profile("989061593")
+        derived = [
+            fact for fact in profile.facts
+            if fact.field.startswith("profile_metric_")
+        ]
+        self.assertEqual(derived, [])
+
+
 class DegradedRetrievalTests(unittest.TestCase):
     """A transient failure must not discard the whole profile."""
 
@@ -695,9 +802,19 @@ class BatchPageWalkTests(unittest.TestCase):
 
     def _assert_two_facts_from_both_pages(self, calls, profile):
         self.assertEqual(len(calls), 1)
-        self.assertEqual(len(profile.facts), 2)
+        # Derived profile metrics may also be present; the walk's contract is
+        # that both verified pages contribute exactly one extracted fact each.
+        walked = [
+            fact
+            for fact in profile.facts
+            if fact.source_url
+            and "source0.example.no" in fact.source_url
+            or fact.source_url
+            and "source1.example.no" in fact.source_url
+        ]
+        self.assertEqual(len(walked), 2)
         self.assertEqual(
-            {fact.source_url for fact in profile.facts},
+            {fact.source_url for fact in walked},
             {
                 "https://source0.example.no/989061593",
                 "https://source1.example.no/989061593",

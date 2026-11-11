@@ -120,6 +120,14 @@ def collect_social_links(
                 "platform": account[0],
                 "handle": account[1],
                 "url": url,
+                # The verified page the account was linked from. Without
+                # it the handle is an assertion with no provenance and
+                # cannot be published as a claim.
+                "source_url": page.url,
+                "retrieved_at": page.retrieved_at,
+                # The link's own label, when it has one. It is what the
+                # claim quotes, because it is on the page.
+                "anchor_text": page.anchor_text.get(href, ""),
             }
         )
 

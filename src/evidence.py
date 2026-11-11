@@ -24,8 +24,11 @@ FRESHNESS_KIND = {
     "official_registry_roles": "registry",
     "official_annual_accounts": "financial",
     "official_company_website": "web",
+    "official_job_feed": "news",
     "news_source": "news",
     "reputable_business_database": "web",
+    "wikidata": "web",
+    "official_lei_registry": "web",
     "search_result": "web",
 }
 

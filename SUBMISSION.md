@@ -82,6 +82,9 @@ never printed. The rich daily path remains available through
 | Component | Provider | Cost |
 |---|---|---|
 | Company identity, management, filed accounts | **Brønnøysundregistrene** (`data.brreg.no`) | Free, no key, no auth |
+| Wikidata identity (QID, LEI, website) | **Wikidata Query Service** (`query.wikidata.org`) | Free, no key, one batch request |
+| News developments | **Google News RSS** | Free, no key, no auth |
+| Vacancies | **NAV Arbeidsplassen** (`arbeidsplassen.nav.no`) | Free, no key, frozen snapshot |
 | Web discovery | **TinyFish** search API | Billable per call — see §5 |
 | Fact extraction + narrative | **NVIDIA NIM**, `nvidia/nemotron-3.5-super-vl-120b-a12b` | No per-token charge on the hosted build endpoint |
 | Anthropic Claude | Supported, **not verified live** | — |
@@ -110,12 +113,24 @@ Measured locally on the 1,000-number corpus:
 | Metric | Value |
 |---|---|
 | Companies returned / expected | **1,000 / 1,000** |
-| Claims / evidence | **28,230 / 28,230** |
-| Outbound requests | **1,407 / 2,000** |
-| Wall clock | **648 s** (~10.8 min) |
+| Claims / evidence | **30,573 / 30,500** |
+| Outbound requests | **1,916 / 2,000** |
+| Wall clock | **817 s** (~13.6 min, 16 workers) |
 | Identities from frozen export | **997 / 1,000** |
 | Registered workplaces | **821 across 634 companies** |
+| Wikidata identities (QID) | **37** (3 with LEI) |
 | Billable external | **$0** |
+
+The 73-claim gap is deliberate: a company whose news lookup was
+performed and found nothing publishes an explicit `news: not_available`
+abstention with no evidence id. Abstentions never count toward recall
+and are never dressed up as facts. The remaining 30,500 claims each
+carry a source URL, retrieval time and an evidence record.
+
+The cold-cache run above is the number the organizer will see on a
+fresh clone: **1,916 of 2,000** requests leaves headroom so the tail is
+never dropped at the ceiling. A warm-cache rerun reuses the content
+cache and spends only a few hundred requests.
 
 A 100-company smoke with `--verify-websites` returned 100/100, 2,484
 claims/evidence, 45 workplaces across 44 companies, and 245/2,000 requests
@@ -184,6 +199,36 @@ because the company has none from one that ran out of budget.
 bulk corpus build trade patience for throughput without changing what a
 scored daily run does.
 
+### Keyless external connectors
+
+Three connectors add external intelligence with no API key, each gated
+so it can never attach another company's data:
+
+- **Wikidata** (`src/wikidata.py`) resolves the whole batch in one
+  SPARQL request. Norwegian organisation numbers map to `wdt:P2333`; the
+  query pulls the entity, LEI (`P1278`), website (`P856`) and employee
+  count (`P1128`) with `GROUP_CONCAT` so multi-valued attributes cannot
+  multiply rows. A company absent from the index records **no**
+  availability state — a missing row is not a claim about the company,
+  and 963 negative claims would be payload noise. Only positive identity
+  facts are published.
+- **News** (`src/news.py`) queries Google News RSS with a whole-phrase
+  match on the folded legal name (legal form stripped). A story is
+  attached only when that phrase appears in the title or summary and the
+  item carries a real publication date; otherwise the family is recorded
+  as `not_available`.
+- **NAV vacancies** (`src/nav_jobs.py`) read a frozen snapshot so a
+  vacancy search costs no per-company request. Postings are matched to
+  the company by employer name, and the snapshot is only refreshed
+  outside the scored run because the endpoint rate-limits aggressively.
+
+The defaults (`AUTO_WEBSITE_CHECKS = 260`, `AUTO_NEWS_CHECKS = 90`,
+Wikidata one batch call) are chosen so a cold 1,000-company run stays
+under the ceiling. A measured cold run spent **1,916 / 2,000**; an
+earlier 300/150 split hit 2,000 exactly and dropped the last seven
+companies, which is why the defaults were lowered and a headroom test
+(`tests/test_synthesis.py`) pins the arithmetic.
+
 ## 6. Company profiles
 
 At least 1,000 profiles are supplied.
@@ -194,13 +239,21 @@ At least 1,000 profiles are supplied.
   group and status flags, full management list including every director,
   registered workplaces, and multi-year filed accounts where they exist.
   Measured on the 1,000-number corpus: **1,000 / 1,000** resolved with a
-  legal name, **917** carrying a management list, **507** carrying filed
+  legal name, **919** carrying a management list, **511** carrying filed
   accounts, **821** registered workplaces across **634** companies, and
-  **28,230** claims/evidence. Every company and module state is terminal;
-  there are no silent drops and no duplicate org numbers.
-- Five companies had a financials source error and three had a roles
-  source error; those gaps are named in `retrieval_errors` rather than
-  converted into empty or invented facts.
+  **30,573** claims / **30,500** evidence. Every company and module
+  state is terminal; there are no silent drops and no duplicate org
+  numbers.
+- **External enrichment** adds, where the budget reaches: **154**
+  registry-listed websites verified by a page fetch, **56** companies
+  with identity-matched social handles, **37** Wikidata identities
+  (QID, and an LEI where Wikidata carries one), and identity-gated news
+  developments. Every enriched fact quotes the page it came from.
+- **Derived metrics** are computed from filed accounts, not restated:
+  revenue growth, profit margin, equity ratio and revenue per employee
+  for the latest year, plus a last-activity date. Years are sorted
+  explicitly before the latest is chosen, so an out-of-order registry
+  response cannot publish an older year as "latest".
 
 Registry data is not a lesser record. The registry *is* the authoritative
 source for everything it holds, and enrichment adds facts the registry
@@ -339,9 +392,9 @@ the next run its comparison.
 ## 10. Verification
 
 ```bash
-python -m unittest discover -s tests    # 673 tests
+python -m unittest discover -s tests    # 759 tests
 ruff check .                            # lint, enforced in CI
-mypy                                    # 38 source files, no issues
+mypy                                    # 42 source files, no issues
 ```
 
 CI runs the suite, ruff and mypy on Python 3.10–3.13, installs the

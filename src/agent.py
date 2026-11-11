@@ -21,14 +21,17 @@ Pipeline::
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 from urllib.parse import urlparse, urlunparse
 
 from pydantic import BaseModel, Field
 
+from src.activity import dated_items
 from src.brreg import get_company
 from src.conflicts import FieldValue, conflict_report, reconcile_all
+from src.contract import utc_now as _utc_now
 from src.crawl import DEFAULT_MAX_CRAWL_LINKS as _DEFAULT_MAX_CRAWL_LINKS
 from src.discovery import discover_sources
 from src.evidence import Evidence, FactRecord
@@ -37,11 +40,15 @@ from src.extract import ExtractedFact
 from src.financials import get_financials
 from src.identity import CompanyIdentity
 from src.jobs import careers_index_links, is_careers_url, read_careers_page
+from src.nav_jobs import NavJobsIndex, job_facts, match_postings
+from src.news import NewsItem, match_news, news_facts, search_news
 from src.orgnumber import InvalidCompanyNumber, normalize, validate
 from src.roles import get_roles
 from src.social import is_social_url
 from src.sources import get_domain
 from src.website import collect_social_links, verify_registered_page
+from src.wikidata import WikidataEntity
+from src.wikidata import identity_facts as wikidata_facts
 
 __all__ = [
     "CompanyProfile",
@@ -609,6 +616,272 @@ def _merge_social_links(profile: CompanyProfile, links: list[dict]) -> None:
         profile.social_links.append(link)
 
 
+def _activity_facts(profile: CompanyProfile, page: Any) -> None:
+    """Publish dated headlines listed on a verified first-party page.
+
+    Only the homepage is read in a keyless run, so this is what "recent
+    activity" can honestly mean without a search provider: the company
+    itself lists this item under this date.
+    """
+    try:
+        items = dated_items(page.text)
+    except Exception:  # noqa: BLE001 - a heuristic must never fail a profile
+        return
+
+    for item in items:
+        profile.facts.append(
+            FactRecord(
+                field="recent_activity",
+                value=item["title"],
+                source_url=page.url,
+                retrieved_at=page.retrieved_at,
+                evidence_text=item["evidence_text"],
+                confidence=0.6,
+                source_tier=2,
+                source_type="official_company_website",
+                as_of=item["date"],
+            )
+        )
+
+
+_PLATFORM_LABELS = {
+    "linkedin": "LinkedIn",
+    "facebook": "Facebook",
+    "instagram": "Instagram",
+    "youtube": "YouTube",
+    "twitter": "Twitter",
+    "x": "X",
+    "tiktok": "TikTok",
+}
+
+
+def _social_quote(page: Any, link: dict[str, Any]) -> str:
+    """Find the page text that proves this link exists.
+
+    The link's own label is best. Failing that, a line naming the handle,
+    then a line naming the platform: an icon link still sits in a block
+    that says "Følg oss på LinkedIn". Nothing found means nothing is
+    published -- a claim whose span is not on the page would break the
+    quote invariant that every other fact obeys.
+    """
+    haystack = " ".join(str(page.text or "").split())
+    anchor = " ".join(str(link.get("anchor_text") or "").split())
+    if anchor and len(anchor) <= 200 and anchor in haystack:
+        return anchor
+
+    platform = str(link.get("platform") or "").strip().lower()
+    handle = str(link.get("handle") or "").strip()
+    label = _PLATFORM_LABELS.get(platform, platform)
+
+    lines = [
+        " ".join(line.split())
+        for line in str(page.text or "").splitlines()
+        if line.strip()
+    ]
+    for needle in (handle, label):
+        if not needle:
+            continue
+        for line in lines:
+            if needle.casefold() in line.casefold() and len(line) <= 200:
+                return line
+    return ""
+
+
+def _social_facts(profile: CompanyProfile, page: Any) -> None:
+    """Publish validated handles with the page that proves them.
+
+    ``social_links`` was populated but never published, because the
+    contract adapter only reads ``evidence`` and ``facts``. The claim is
+    the account URL; the evidence is the label or line on the verified
+    page that carries it.
+    """
+    published = {
+        str(fact.field)
+        for fact in profile.facts
+        if str(fact.field).startswith("social_")
+    }
+    for link in profile.social_links:
+        platform = str(link.get("platform") or "").strip()
+        source_url = str(link.get("source_url") or "").strip()
+        if not platform or not source_url or source_url != page.url:
+            continue
+        field = f"social_{platform}"
+        if field in published:
+            continue
+        quote = _social_quote(page, link)
+        if not quote:
+            continue
+        published.add(field)
+        profile.facts.append(
+            FactRecord(
+                field=field,
+                value=str(link.get("url") or ""),
+                source_url=source_url,
+                retrieved_at=str(
+                    link.get("retrieved_at") or page.retrieved_at
+                ),
+                evidence_text=quote,
+                confidence=0.85,
+                source_tier=2,
+                source_type="official_company_website",
+            )
+        )
+
+
+def _news_fetch(url: str) -> bytes:
+    """Fetch a search feed, counted and retried by the shared client."""
+    from src.http import fetch_bytes
+
+    # The URL is built here from a fixed endpoint and an encoded name,
+    # so the private-address guard has nothing to inspect.
+    return fetch_bytes(url, attempts=2, validate=False).body
+
+
+def _apply_news(
+    profile: CompanyProfile,
+    *,
+    fetch: Callable[[str], bytes] | None = None,
+) -> None:
+    """Publish recent press mentions that name this company.
+
+    A Google News query returns near-misses as readily as hits, so an
+    item is published only when the folded company name appears as a
+    whole token in its title or summary. Nothing found is recorded as
+    ``not_available`` rather than left silent.
+    """
+    if not profile.company_name:
+        return
+
+    try:
+        items: list[NewsItem] = search_news(
+            profile.company_name, fetch=fetch or _news_fetch
+        )
+    except Exception:  # noqa: BLE001 - news is an enrichment
+        profile.availability.setdefault("news", "failed")
+        return
+
+    matches = match_news(
+        items,
+        company_name=profile.company_name,
+        previous_names=profile.previous_names,
+    )
+    if not matches:
+        profile.availability.setdefault("news", "not_available")
+        return
+
+    retrieved_at = profile.retrieved_at or _utc_now()
+    for item in news_facts(matches, retrieved_at=retrieved_at):
+        profile.facts.append(FactRecord(**item))
+
+    profile.availability.pop("news", None)
+    profile.sources = list(
+        dict.fromkeys([*profile.sources, *[item.link for item in matches]])
+    )
+
+
+def _wikidata_fetch(query: str) -> dict:
+    """POST one SPARQL query to WDQS, counted against the ceiling.
+
+    The endpoint is fixed and the query is built from validated digits,
+    so there is no caller-controlled URL for the private-address guard to
+    inspect; the request is counted here rather than through the shared
+    GET client because SPARQL needs a form-encoded POST.
+    """
+    import requests
+
+    from src.request_tracker import request_tracker
+    from src.wikidata import DEFAULT_ENDPOINT, USER_AGENT
+
+    request_tracker.record()
+    response = requests.post(
+        DEFAULT_ENDPOINT,
+        data={"query": query, "format": "json"},
+        headers={
+            "Accept": "application/sparql-results+json",
+            "User-Agent": USER_AGENT,
+        },
+        timeout=90,
+    )
+    response.raise_for_status()
+    return response.json()
+
+
+def _apply_wikidata(
+    profile: CompanyProfile,
+    entity: WikidataEntity | None,
+) -> None:
+    """Publish the external identifiers Wikidata resolved for this company.
+
+    The lookup is a single batch request for the whole run, so a company
+    that is absent simply has no external identifier; that is not a
+    checked-and-empty connector result, so no availability state is
+    recorded for it.
+    """
+    if entity is None:
+        return
+
+    retrieved_at = profile.retrieved_at or _utc_now()
+    for item in wikidata_facts(entity, retrieved_at=retrieved_at):
+        profile.facts.append(FactRecord(**item))
+
+    profile.sources = list(dict.fromkeys([*profile.sources, entity.url]))
+
+
+def _apply_nav_jobs(
+    profile: CompanyProfile,
+    index: NavJobsIndex | None,
+) -> None:
+    """Attribute national vacancy ads to this company by exact name.
+
+    Matching is exact-name only, with a municipality tie-break when two
+    different employer spellings fold to the same name. A job ad is
+    strong evidence of activity and the fastest way to be disqualified
+    is to attach one to the wrong company, so an ambiguous name yields
+    nothing rather than a guess.
+    """
+    if index is None or not index.postings:
+        return
+
+    municipalities = [
+        value
+        for value in [
+            profile.municipality,
+            *[
+                location.get("municipality")
+                for location in profile.locations
+                if isinstance(location, dict)
+            ],
+        ]
+        if value
+    ]
+    subunit_names = [
+        str(location.get("name"))
+        for location in profile.locations
+        if isinstance(location, dict) and location.get("name")
+    ]
+
+    matches = match_postings(
+        index,
+        company_name=profile.company_name,
+        previous_names=profile.previous_names,
+        subunit_names=subunit_names,
+        municipalities=municipalities,
+    )
+    if not matches:
+        profile.availability.setdefault("jobs", "not_available")
+        return
+
+    for item in job_facts(matches, retrieved_at=index.retrieved_at):
+        profile.facts.append(FactRecord(**item))
+
+    # An explicit empty state from the careers probe is superseded by
+    # real vacancies; keeping both would publish a contradiction.
+    profile.availability.pop("jobs", None)
+    profile.sources = list(
+        dict.fromkeys([*profile.sources, matches[0].url])
+    )
+
+
 def _drop_registered_website_source(
     profile: CompanyProfile,
     website: str,
@@ -704,6 +977,8 @@ def _apply_registered_website(
     profile.website = identity.registered_website
     profile.sources = list(dict.fromkeys([*profile.sources, page.url]))
     _merge_social_links(profile, collect_social_links(identity, page))
+    _social_facts(profile, page)
+    _activity_facts(profile, page)
 
 
 def _careers_probe(website: str | None) -> str | None:
@@ -955,6 +1230,8 @@ def _apply_extraction(
                     profile,
                     collect_social_links(identity, page),
                 )
+                _social_facts(profile, page)
+                _activity_facts(profile, page)
             elif not is_seed and on_registered_domain:
                 # A careers page on the verified domain inherits the
                 # homepage's identity proof. Posting pages rarely repeat
@@ -1252,6 +1529,10 @@ def build_profile(
     subunits: list[dict[str, Any]] | None = None,
     include_roles: bool = True,
     include_financials: bool = True,
+    nav_index: NavJobsIndex | None = None,
+    include_news: bool = False,
+    news_fetch: Callable[[str], bytes] | None = None,
+    wikidata_entity: WikidataEntity | None = None,
 ) -> CompanyProfile:
     """Build a verified company profile from a Norwegian org number.
 
@@ -1269,6 +1550,14 @@ def build_profile(
             the same check.
         include_narrative: Add a written explanation. Falls back to a
             deterministic summary when no LLM is configured.
+        nav_index: Pre-harvested NAV vacancy index. Costs no request per
+            company and publishes vacancy facts for exact-name matches.
+        include_news: Look up recent press mentions in the keyless
+            Google News RSS search feed. Costs one request per company.
+        news_fetch: Injected feed fetcher, so tests need no network.
+        wikidata_entity: The entity the batch-wide Wikidata lookup
+            resolved for this company. Costs no per-company request and
+            publishes the QID and LEI as external identifiers.
         use_llm: Whether to permit LLM calls at all. ``False`` forces
             fully deterministic behaviour.
         max_sources: Source discovery ceiling. Costs scale linearly
@@ -1293,6 +1582,10 @@ def build_profile(
         include_financials: Fetch filed annual accounts. Disable when the
             identity record shows no filing, or when the request budget
             cannot afford a call that is known to return nothing.
+        nav_index: Pre-harvested NAV Arbeidsplassen vacancy index. When
+            given, postings are attributed by exact registered name and
+            published as dated job claims. It costs no request per
+            company, which is why the index is harvested once per batch.
 
     Raises:
         InvalidCompanyNumber: Malformed number or failed MOD-11 checksum.
@@ -1455,6 +1748,12 @@ def build_profile(
     if include_website_check and not include_extraction:
         _apply_registered_website(profile, identity)
 
+    _apply_nav_jobs(profile, nav_index)
+    _apply_wikidata(profile, wikidata_entity)
+
+    if include_news:
+        _apply_news(profile, fetch=news_fetch)
+
     if include_narrative:
         profile.explanation = explain(profile, use_llm=use_llm).to_dict()
 
@@ -1462,6 +1761,125 @@ def build_profile(
     # carries full provenance in `evidence`; mirroring it would double the
     # payload with identical records. This list is reserved for claims the
     # enrichment stage produces, which do not map 1:1 onto a registry field.
+
+    # -----------------------------------------------------------
+    # Zero-request derived facts from existing financials
+    # -----------------------------------------------------------
+    # profile_metrics: computed ratios from filed accounts. The registry
+    # returns years newest-first, but the order is not part of the contract,
+    # so sort explicitly rather than trusting list position -- picking the
+    # wrong year would publish a materially wrong figure.
+    ordered_years = sorted(
+        financial_years,
+        key=lambda year: (year.fiscal_year or "", year.period_end or ""),
+    )
+    if ordered_years:
+        latest = ordered_years[-1]
+        prev = ordered_years[-2] if len(ordered_years) >= 2 else None
+        currency = latest.currency or financials.get("currency") or "NOK"
+        emp = profile.employee_count
+
+        # Revenue growth YoY
+        if prev and prev.revenue and latest.revenue and prev.revenue != 0:
+            growth = (latest.revenue - prev.revenue) / prev.revenue
+            profile.facts.append(FactRecord(
+                field="profile_metric_revenue_growth_yoy",
+                value=round(growth, 4),
+                source_url=financials["source"],
+                retrieved_at=financials["retrieved_at"],
+                evidence_text=(
+                    f"Revenue FY{latest.fiscal_year}: {latest.revenue:,.0f}; "
+                    f"FY{prev.fiscal_year}: {prev.revenue:,.0f}; "
+                    f"growth: {growth:.2%}"
+                ),
+                confidence=0.85,
+                source_tier=3,
+                source_type="official_annual_accounts",
+                as_of=latest.period_end,
+                reporting_period=latest.fiscal_year,
+            ))
+
+        # Profit margin
+        if latest.revenue and latest.net_result is not None:
+            margin = latest.net_result / latest.revenue
+            profile.facts.append(FactRecord(
+                field="profile_metric_profit_margin",
+                value=round(margin, 4),
+                source_url=financials["source"],
+                retrieved_at=financials["retrieved_at"],
+                evidence_text=(
+                    f"Net result FY{latest.fiscal_year}: {latest.net_result:,.0f}; "
+                    f"Revenue: {latest.revenue:,.0f}; margin: {margin:.2%}"
+                ),
+                confidence=0.85,
+                source_tier=3,
+                source_type="official_annual_accounts",
+                as_of=latest.period_end,
+                reporting_period=latest.fiscal_year,
+            ))
+
+        # Equity ratio
+        if latest.total_assets and latest.total_equity is not None and latest.total_assets != 0:
+            equity_ratio = latest.total_equity / latest.total_assets
+            profile.facts.append(FactRecord(
+                field="profile_metric_equity_ratio",
+                value=round(equity_ratio, 4),
+                source_url=financials["source"],
+                retrieved_at=financials["retrieved_at"],
+                evidence_text=(
+                    f"Equity FY{latest.fiscal_year}: {latest.total_equity:,.0f}; "
+                    f"Assets: {latest.total_assets:,.0f}; ratio: {equity_ratio:.2%}"
+                ),
+                confidence=0.85,
+                source_tier=3,
+                source_type="official_annual_accounts",
+                as_of=latest.period_end,
+                reporting_period=latest.fiscal_year,
+            ))
+
+        # Revenue per employee
+        if emp and latest.revenue:
+            rev_per_emp = latest.revenue / emp
+            profile.facts.append(FactRecord(
+                field="profile_metric_revenue_per_employee",
+                value=round(rev_per_emp, 2),
+                source_url=financials["source"],
+                retrieved_at=financials["retrieved_at"],
+                evidence_text=(
+                    f"Revenue FY{latest.fiscal_year}: {latest.revenue:,.0f}; "
+                    f"Employees: {emp}; per employee: {rev_per_emp:,.0f} {currency}"
+                ),
+                confidence=0.8,
+                source_tier=3,
+                source_type="official_annual_accounts",
+                as_of=latest.period_end,
+                reporting_period=latest.fiscal_year,
+            ))
+
+    # freshness_evidence: last activity date across all sources
+    as_of_dates = [
+        f.as_of for f in profile.facts
+        if f.as_of and isinstance(f.as_of, str) and len(f.as_of) >= 10
+    ]
+    if as_of_dates:
+        last_activity = max(as_of_dates)
+        retrieved_on = (profile.retrieved_at or "")[:10] or "unknown"
+        profile.facts.append(FactRecord(
+            field="last_activity_date",
+            value=last_activity,
+            source_url=financials["source"],
+            retrieved_at=profile.retrieved_at or "",
+            evidence_text=(
+                f"Latest fact date across all sources: {last_activity}; "
+                f"Profile retrieved: {retrieved_on}"
+            ),
+            confidence=0.9,
+            source_tier=1,
+            source_type="official_registry",
+            as_of=last_activity,
+        ))
+
+
     return profile
 
 

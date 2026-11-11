@@ -39,6 +39,26 @@ DEFAULT_REPORT = "data/contract_report.json"
 DEFAULT_WORKERS = 8
 DEFAULT_MINUTES = 40.0
 AUTO_BULK_MIN = 500
+# A vacancy index is worth reading for any batch large enough to amortise
+# the harvest, which costs no per-company request.
+AUTO_NAV_MIN = 100
+# One page fetch per company does not fit beside identity, roles and
+# accounts inside the request ceiling, so a large batch reads the
+# richest companies and leaves the rest registry-only.
+#
+# A 1,000-company run spends ~1,427 registry requests (roles and filed
+# accounts) plus retry overhead on failed fetches. Measured at 300
+# website checks and 150 news lookups the run hit 2,000 and dropped the
+# last seven companies, so both defaults now leave headroom: website
+# checks verify ~53% of companies and are the better per-request buy,
+# news ~17%.
+AUTO_WEBSITE_CHECKS = 260
+# A news lookup is one request per company, so it shares the same
+# shrinking slice of the ceiling.
+AUTO_NEWS_CHECKS = 90
+# Wikidata resolves the whole batch in one SPARQL request, so any batch
+# large enough to amortise the ~10 s call is worth it.
+AUTO_WIKIDATA_MIN = 100
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -136,15 +156,149 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--verify-websites",
         action="store_true",
-        help="Keep the registry-website fetch when running from --bulk.",
+        help="Keep the registry-website fetch for every company in --bulk.",
+    )
+    parser.add_argument(
+        "--website-checks",
+        type=int,
+        default=None,
+        metavar="N",
+        help=(
+            "Companies whose registry website is fetched. 0 disables the "
+            "check, a negative value fetches every company. Defaults to "
+            "400 for runs of 500+ and to every company below that."
+        ),
+    )
+    parser.add_argument(
+        "--news-checks",
+        type=int,
+        default=None,
+        metavar="N",
+        help=(
+            "Companies whose press mentions are looked up in the keyless "
+            "Google News RSS feed. 0 disables the lookup, a negative value "
+            "looks up every company. Defaults to 150 for runs of 500+ and "
+            "to every company below that."
+        ),
+    )
+    parser.add_argument(
+        "--nav-jobs",
+        default=os.environ.get("AGENT_NAV_JOBS"),
+        metavar="PATH",
+        help=(
+            "Frozen NAV Arbeidsplassen vacancy snapshot, or 'auto' for the "
+            "cached snapshot refreshed when stale, or 'off'. Runs of 100+ "
+            "default to auto."
+        ),
+    )
+    parser.add_argument(
+        "--wikidata",
+        default=os.environ.get("AGENT_WIKIDATA"),
+        metavar="auto|off",
+        help=(
+            "Resolve external identifiers (QID, LEI) from Wikidata in one "
+            "batch request. 'off' disables it. Runs of 100+ default to auto."
+        ),
     )
     return parser
+
+
+def _website_check_limit(count: int, requested: int | None) -> int:
+    if requested is None:
+        return count if count < AUTO_BULK_MIN else AUTO_WEBSITE_CHECKS
+    return requested
+
+
+def _news_check_limit(count: int, requested: int | None) -> int:
+    if requested is None:
+        return count if count < AUTO_BULK_MIN else AUTO_NEWS_CHECKS
+    return requested
+
+
+def _news_name_is_usable(record: dict[str, Any]) -> bool:
+    from src.news import MIN_KEY_LENGTH, key_length
+
+    return key_length(str(record.get("company_name") or "")) >= MIN_KEY_LENGTH
+
+
+def _select_news_checks(
+    inputs: list[dict[str, Any]],
+    company_records: dict[str, dict[str, Any]] | None,
+    limit: int,
+) -> set[str] | None:
+    """Pick the companies whose press coverage is worth a request.
+
+    Unlike the website check there is no precondition: press coverage is
+    about the company, not its site. Names too short to match safely are
+    skipped, because a three-letter query returns unrelated articles and
+    the identity gate would have to reject every one of them.
+    """
+    if limit < 0:
+        return None
+    if limit == 0:
+        return set()
+
+    known = company_records or {}
+    ranked: list[tuple[int, int, int, str]] = []
+    for position, item in enumerate(inputs):
+        org = str(item["organisation_number"])
+        record = known.get(org)
+        if record is None:
+            # No bulk snapshot means no name to judge; the connector
+            # applies its own length gate once the registry answers.
+            ranked.append((0, 0, position, org))
+            continue
+        if not _news_name_is_usable(record):
+            continue
+        employees = int(record.get("employee_count") or 0)
+        filing = 1 if record.get("last_filed_annual_accounts") else 0
+        ranked.append((-employees, -filing, position, org))
+    ranked.sort()
+    return {entry[3] for entry in ranked[:limit]}
+
+
+def _select_website_checks(
+    inputs: list[dict[str, Any]],
+    company_records: dict[str, dict[str, Any]] | None,
+    limit: int,
+) -> set[str] | None:
+    """Pick the companies whose website is worth a request.
+
+    A registered website is the precondition, so companies without one
+    are never selected. Among the rest, size first and a filed annual
+    account second: those are the profiles a reader is most likely to
+    look at, and the ones where a verified site adds the most.
+    """
+    if limit < 0:
+        return None
+    if limit == 0:
+        return set()
+
+    known = company_records or {}
+    ranked: list[tuple[int, int, int, str]] = []
+    for position, item in enumerate(inputs):
+        org = str(item["organisation_number"])
+        record = known.get(org)
+        if record is None:
+            # Without a bulk snapshot the planner cannot see the
+            # registered website, so it selects in input order and lets
+            # the per-company check decide.
+            ranked.append((0, 0, position, org))
+            continue
+        if not record.get("website"):
+            continue
+        employees = int(record.get("employee_count") or 0)
+        filing = 1 if record.get("last_filed_annual_accounts") else 0
+        ranked.append((-employees, -filing, position, org))
+    ranked.sort()
+    return {entry[3] for entry in ranked[:limit]}
 
 
 def _mode(
     args: argparse.Namespace,
     *,
     bulk: bool = False,
+    website_checks: int = 1,
 ) -> tuple[bool, bool, bool, bool, bool]:
     from src.llm import is_explicitly_configured
 
@@ -156,9 +310,9 @@ def _mode(
 
     include_web = search_available or llm_ready
     include_extraction = llm_ready
-    verify_websites = getattr(args, "verify_websites", False)
-    include_website_check = not include_extraction and (
-        not bulk or verify_websites
+    include_website_check = (
+        not include_extraction
+        and (not bulk or website_checks != 0)
     )
     include_narrative = True
     return (
@@ -298,13 +452,83 @@ def main(argv: list[str] | None = None) -> int:
                     f"{subunit_meta['selected']} companies"
                 )
 
+    requested_checks = args.website_checks
+    if getattr(args, "verify_websites", False):
+        requested_checks = -1
+    website_limit = _website_check_limit(len(inputs), requested_checks)
+    website_check_orgs = _select_website_checks(
+        inputs, bulk_records, website_limit
+    )
+
+    news_limit = _news_check_limit(len(inputs), args.news_checks)
+    news_orgs = _select_news_checks(inputs, bulk_records, news_limit)
+    include_news = news_orgs is None or bool(news_orgs)
+
     (
         include_web,
         include_extraction,
         include_website_check,
         include_narrative,
         use_llm,
-    ) = _mode(args, bulk=bool(bulk_records))
+    ) = _mode(
+        args, bulk=bool(bulk_records), website_checks=website_limit
+    )
+
+    nav_index = None
+    nav_meta: dict[str, Any] | None = None
+    nav_path = args.nav_jobs
+    if nav_path is None and len(inputs) >= AUTO_NAV_MIN:
+        nav_path = "auto"
+    if nav_path and nav_path != "off":
+        from src.nav_jobs import DEFAULT_NAV_PATH, ensure_snapshot, load
+
+        if nav_path == "auto":
+            nav_index, nav_meta = ensure_snapshot(DEFAULT_NAV_PATH)
+        else:
+            nav_index = load(nav_path)
+            nav_meta = {
+                "path": nav_path,
+                "postings": len(nav_index.postings) if nav_index else 0,
+                "retrieved_at": nav_index.retrieved_at if nav_index else None,
+            }
+            if nav_index is None:
+                nav_meta["error"] = "snapshot missing or unreadable"
+        if nav_meta and nav_meta.get("error"):
+            print(f"  nav jobs unavailable: {nav_meta['error']}")
+        elif nav_meta:
+            print(
+                f"  nav jobs {nav_meta['postings']} postings "
+                f"({nav_meta['retrieved_at']})"
+            )
+
+    wikidata_entities: dict[str, Any] = {}
+    wikidata_meta: dict[str, Any] | None = None
+    wikidata_mode = args.wikidata
+    if wikidata_mode is None and len(inputs) >= AUTO_WIKIDATA_MIN:
+        wikidata_mode = "auto"
+    if wikidata_mode and wikidata_mode != "off":
+        from src import wikidata as wikidata_module
+        from src.agent import _wikidata_fetch
+
+        try:
+            wikidata_entities = wikidata_module.resolve(
+                [item["organisation_number"] for item in inputs],
+                fetch=_wikidata_fetch,
+            )
+            resolved = len(wikidata_entities)
+            with_lei = sum(
+                1 for entity in wikidata_entities.values() if entity.lei
+            )
+            wikidata_meta = {"resolved": resolved, "with_lei": with_lei}
+            print(
+                f"  wikidata {resolved}/{len(inputs)} entities "
+                f"({with_lei} with LEI)"
+            )
+        except Exception as exc:  # noqa: BLE001 - identity is an enrichment
+            wikidata_entities = {}
+            error = f"{type(exc).__name__}: {exc}"
+            wikidata_meta = {"error": error}
+            print(f"  wikidata unavailable: {error}")
 
     workers = (
         args.workers
@@ -343,6 +567,11 @@ def main(argv: list[str] | None = None) -> int:
         use_llm=use_llm,
         company_records=bulk_records,
         subunit_records=subunit_records,
+        nav_index=nav_index,
+        website_check_orgs=website_check_orgs,
+        include_news=include_news,
+        news_orgs=news_orgs,
+        wikidata_entities=wikidata_entities,
         resume=False,
         workers=workers,
         deadline=deadline,
@@ -385,6 +614,20 @@ def main(argv: list[str] | None = None) -> int:
     report["workers"] = workers
     report["bulk"] = bulk_meta
     report["underenheter"] = subunit_meta
+    report["nav_jobs"] = nav_meta
+    report["website_checks"] = {
+        "enabled": bool(include_website_check),
+        "limit": website_limit,
+        "selected": (
+            None if website_check_orgs is None else len(website_check_orgs)
+        ),
+    }
+    report["news"] = {
+        "enabled": include_news,
+        "limit": news_limit,
+        "selected": None if news_orgs is None else len(news_orgs),
+    }
+    report["wikidata"] = wikidata_meta
     report["companies"] = company_rows(envelopes)
     write_json(report, args.report)
 
