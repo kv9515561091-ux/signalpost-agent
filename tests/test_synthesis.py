@@ -187,6 +187,56 @@ class WebsiteCheckPlannerTests(unittest.TestCase):
             2000,
         )
 
+    def test_a_larger_batch_shrinks_the_auto_enrichment_caps(self):
+        from src.contract_cli import (
+            AUTO_NEWS_CHECKS,
+            AUTO_WEBSITE_CHECKS,
+            RETRY_MARGIN,
+            SAFETY_MARGIN,
+            _fit_enrichment_to_ceiling,
+        )
+
+        inputs = [
+            {"organisation_number": str(100000000 + i)} for i in range(1100)
+        ]
+        records = {
+            str(100000000 + i): {"last_filed_annual_accounts": i % 2 == 0}
+            for i in range(1100)
+        }
+        filings = 550
+        registry_cost = len(inputs) + filings
+        room = max(0, 2000 - registry_cost - RETRY_MARGIN - SAFETY_MARGIN)
+
+        website, news = _fit_enrichment_to_ceiling(
+            inputs, None, None, AUTO_WEBSITE_CHECKS, AUTO_NEWS_CHECKS, records, 2000
+        )
+        self.assertEqual(website, min(AUTO_WEBSITE_CHECKS, room * 74 // 100))
+        self.assertEqual(news, min(AUTO_NEWS_CHECKS, max(0, room - website)))
+        self.assertLessEqual(
+            registry_cost + website + news + RETRY_MARGIN + SAFETY_MARGIN,
+            2000,
+        )
+
+        # The verified 1,000-company defaults are untouched.
+        self.assertEqual(
+            _fit_enrichment_to_ceiling(
+                inputs[:1000],
+                None,
+                None,
+                AUTO_WEBSITE_CHECKS,
+                AUTO_NEWS_CHECKS,
+                records,
+                2000,
+            ),
+            (AUTO_WEBSITE_CHECKS, AUTO_NEWS_CHECKS),
+        )
+
+        # Explicit overrides are honoured: a named number owns the budget.
+        self.assertEqual(
+            _fit_enrichment_to_ceiling(inputs, 5, 3, 5, 3, records, 2000),
+            (5, 3),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

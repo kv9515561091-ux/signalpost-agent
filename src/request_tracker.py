@@ -31,6 +31,17 @@ def default_limit() -> int:
     return value if value > 0 else DEFAULT_LIMIT
 
 
+class RequestLimitExceeded(RuntimeError):
+    """The outbound ceiling was reached.
+
+    A distinct type so a batch can tell an allowance running out apart
+    from a genuine per-company failure. The contract treats an
+    entrant-caused failure as a zero; exhausting the request budget we
+    were given is degradation, and the envelope should say
+    ``budget_exhausted`` rather than ``submission_error``.
+    """
+
+
 class RequestTracker:
     def __init__(self, limit: int | None = None):
         self.limit = limit if limit is not None else default_limit()
@@ -45,7 +56,7 @@ class RequestTracker:
     def record(self, requests: int = 1):
         with self._lock:
             if self.count + requests > self.limit:
-                raise RuntimeError(
+                raise RequestLimitExceeded(
                     f"Outbound request limit exceeded: "
                     f"{self.limit}"
                 )

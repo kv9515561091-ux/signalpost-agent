@@ -379,7 +379,11 @@ def _module_state(
 ) -> dict[str, Any]:
     prefix = f"{name}:"
     matching = [error for error in errors if error.startswith(prefix)]
-    if profile.get("error"):
+    if profile.get("budget_exhausted"):
+        state = "budget_exhausted"
+    elif _is_source_network_failure(profile):
+        state = "source_error"
+    elif profile.get("error"):
         state = "submission_error"
     elif matching:
         state = "source_error"
@@ -422,7 +426,11 @@ def _modules(profile: dict[str, Any]) -> dict[str, dict[str, Any]]:
         ),
         "website": {
             "state": (
-                "submission_error"
+                "budget_exhausted"
+                if profile.get("budget_exhausted")
+                else "source_error"
+                if _is_source_network_failure(profile)
+                else "submission_error"
                 if profile.get("error")
                 else "complete"
                 if profile.get("website")
@@ -484,7 +492,7 @@ _COVERAGE_FAMILIES: dict[str, tuple[str, ...]] = {
         "job_opening",
     ),
     "locations": ("locations", "workplace_"),
-    "activity": ("recent_activity",),
+    "activity": ("recent_activity", "news"),
 }
 
 # What a reader should look at first. Ordered by how much it says about
@@ -614,6 +622,33 @@ def _synthesis(
     }
 
 
+# An error string that starts with one of these exception names means the
+# upstream source failed or became unreachable mid-request, not that the
+# agent broke. They map to ``source_error``, which is the terminal state
+# the vocabulary reserves for an unavailable source; ``submission_error``
+# is reserved for entrant-side defects.
+_NETWORK_ERROR_PREFIXES = (
+    "ConnectionError",
+    "ConnectTimeout",
+    "ReadTimeout",
+    "TimeoutError",
+    "ProxyError",
+    "SSLError",
+    "HTTPError",
+    "MaxRetryError",
+)
+
+
+def _is_source_network_failure(profile: dict[str, Any]) -> bool:
+    error = str(profile.get("error") or "")
+    if not error:
+        return False
+    return any(
+        error == prefix or error.startswith(prefix + ":")
+        for prefix in _NETWORK_ERROR_PREFIXES
+    )
+
+
 def envelope_for(
     profile: dict[str, Any],
     *,
@@ -626,6 +661,8 @@ def envelope_for(
     claims, evidence = _evidence_for_profile(organisation_number, profile)
     errors = _errors(profile)
     failed = bool(profile.get("error"))
+    network_source_failure = _is_source_network_failure(profile)
+    budget_exhausted = bool(profile.get("budget_exhausted"))
     operations = profile.get("_operations")
     if not isinstance(operations, dict):
         operations = {}
@@ -654,7 +691,15 @@ def envelope_for(
         # preserves rejected extraction candidates and retrieval errors
         # for a reviewer without polluting the contract arrays.
         "run_id": run_id,
-        "state": "submission_error" if failed else "complete",
+        "state": (
+            "budget_exhausted"
+            if budget_exhausted
+            else "source_error"
+            if network_source_failure
+            else "submission_error"
+            if failed
+            else "complete"
+        ),
         "started_at": started_at,
         "completed_at": completed_at,
         "modules": _modules(profile),

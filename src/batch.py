@@ -41,7 +41,7 @@ from src.agent import (
 from src.budget import REGISTRY_REQUESTS_PER_COMPANY, RequestBudget
 from src.changes import diff_profiles, summarise_changes
 from src.orgnumber import InvalidCompanyNumber
-from src.request_tracker import request_tracker
+from src.request_tracker import RequestLimitExceeded, request_tracker
 
 DEFAULT_DELAY_SECONDS = 0.4
 
@@ -467,11 +467,21 @@ def process_companies(
     # requested. A reserve larger than the budget cannot protect
     # anything.
     ceiling = request_tracker.limit
-    registry_per_company = 0 if company_records else REGISTRY_REQUESTS_PER_COMPANY
-    reserve = min(
-        registry_per_company * total,
-        max(0, ceiling - registry_per_company),
-    )
+    if company_records:
+        # Bulk identity removes the per-company identity request, but
+        # roles and filed accounts are still live. A small tail reserve
+        # keeps the last in-flight companies' spine requests inside the
+        # ceiling when the enrichment caps run close to the limit. It is
+        # deliberately small: reserving the whole spine here would stop
+        # enrichment from the first company and throw away the very
+        # facts the run is for.
+        reserve = min(2 * max(1, workers), max(0, ceiling - 1))
+    else:
+        registry_per_company = REGISTRY_REQUESTS_PER_COMPANY
+        reserve = min(
+            registry_per_company * total,
+            max(0, ceiling - registry_per_company),
+        )
     run_budget = RequestBudget.from_tracker(
         request_tracker,
         protected=reserve,
@@ -600,6 +610,15 @@ def process_companies(
                     record["retrieval_errors"].append(
                         "financials: skipped after the daily time budget ran out"
                     )
+        except RequestLimitExceeded as exc:
+            # The allowance ran out, not the company. Record it as a
+            # budget stop so the envelope is honest about which side
+            # failed and a reviewer does not read it as a broken agent.
+            record = {
+                "company_number": raw,
+                "error": f"{type(exc).__name__}: {exc}",
+                "budget_exhausted": True,
+            }
         except InvalidCompanyNumber as exc:
             record = {"company_number": raw, "error": str(exc)}
         except Exception as exc:  # noqa: BLE001 - one bad entity must not

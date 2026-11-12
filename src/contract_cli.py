@@ -60,6 +60,21 @@ AUTO_NEWS_CHECKS = 90
 # large enough to amortise the ~10 s call is worth it.
 AUTO_WIKIDATA_MIN = 100
 
+# The enrichment defaults above were tuned on a 1,000-company cold run
+# that spent 1,427 requests on roles and filed accounts. A larger batch
+# (the contract says the official set may grow to 1,100) has to take its
+# extra spine requests out of enrichment, or the final companies reach
+# the ceiling. Up to the verified size the proven defaults are left
+# untouched; above it they shrink to fit.
+VERIFIED_BATCH = 1000
+# Measured registry cost per company on the cold run, rounded up so a
+# batch with a higher filing rate still fits.
+LIVE_REGISTRY_PER_COMPANY = 1.45
+# Failed page fetches cost two requests each (one retry). The cold run
+# spent ~139 on retries; leave room for the larger batch.
+RETRY_MARGIN = 150
+SAFETY_MARGIN = 20
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -94,6 +109,16 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_REPORT,
         metavar="PATH",
         help="JSON run report and contract checks.",
+    )
+    parser.add_argument(
+        "--html-output",
+        default=None,
+        metavar="DIR",
+        help=(
+            "Also render a self-contained static site (index.html plus "
+            "one page per company) into DIR. Searchable, offline, mobile-"
+            "friendly; every fact links to its source."
+        ),
     )
     parser.add_argument(
         "--run-id",
@@ -166,7 +191,8 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Companies whose registry website is fetched. 0 disables the "
             "check, a negative value fetches every company. Defaults to "
-            "400 for runs of 500+ and to every company below that."
+            "260 for runs of 500+ and to every company below that; the "
+            "default shrinks automatically for larger batches."
         ),
     )
     parser.add_argument(
@@ -177,8 +203,9 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Companies whose press mentions are looked up in the keyless "
             "Google News RSS feed. 0 disables the lookup, a negative value "
-            "looks up every company. Defaults to 150 for runs of 500+ and "
-            "to every company below that."
+            "looks up every company. Defaults to 90 for runs of 500+ and "
+            "to every company below that; the default shrinks automatically "
+            "for larger batches."
         ),
     )
     parser.add_argument(
@@ -213,6 +240,50 @@ def _news_check_limit(count: int, requested: int | None) -> int:
     if requested is None:
         return count if count < AUTO_BULK_MIN else AUTO_NEWS_CHECKS
     return requested
+
+
+def _fit_enrichment_to_ceiling(
+    inputs: list[dict[str, Any]],
+    requested_website: int | None,
+    requested_news: int | None,
+    website_limit: int,
+    news_limit: int,
+    company_records: dict[str, dict[str, Any]] | None,
+    ceiling: int,
+) -> tuple[int, int]:
+    """Shrink the automatic enrichment caps so a large batch still fits.
+
+    Explicit ``--website-checks`` / ``--news-checks`` are honoured: a
+    caller that names a number owns the budget. Only the defaults
+    shrink, and only above the batch size they were verified against.
+    """
+    count = len(inputs)
+    if count <= VERIFIED_BATCH:
+        return website_limit, news_limit
+
+    if company_records:
+        # One roles request per company plus one accounts request for
+        # every company with a filing. Bulk misses default to a filing,
+        # which keeps the estimate conservative.
+        filings = sum(
+            1
+            for item in inputs
+            if (company_records.get(str(item["organisation_number"])) or {}).get(
+                "last_filed_annual_accounts", True
+            )
+        )
+        registry_cost = count + filings
+    else:
+        registry_cost = int(count * LIVE_REGISTRY_PER_COMPANY)
+
+    room = max(0, ceiling - registry_cost - RETRY_MARGIN - SAFETY_MARGIN)
+    # Website checks verify ~53% of companies and news ~17%, so the
+    # scarcer room goes to the better per-request buy first.
+    if requested_website is None:
+        website_limit = min(website_limit, room * 74 // 100)
+    if requested_news is None:
+        news_limit = min(news_limit, max(0, room - website_limit))
+    return website_limit, news_limit
 
 
 def _news_name_is_usable(record: dict[str, Any]) -> bool:
@@ -456,11 +527,20 @@ def main(argv: list[str] | None = None) -> int:
     if getattr(args, "verify_websites", False):
         requested_checks = -1
     website_limit = _website_check_limit(len(inputs), requested_checks)
+    news_limit = _news_check_limit(len(inputs), args.news_checks)
+    website_limit, news_limit = _fit_enrichment_to_ceiling(
+        inputs,
+        requested_checks,
+        args.news_checks,
+        website_limit,
+        news_limit,
+        bulk_records,
+        request_tracker.limit,
+    )
     website_check_orgs = _select_website_checks(
         inputs, bulk_records, website_limit
     )
 
-    news_limit = _news_check_limit(len(inputs), args.news_checks)
     news_orgs = _select_news_checks(inputs, bulk_records, news_limit)
     include_news = news_orgs is None or bool(news_orgs)
 
@@ -629,7 +709,14 @@ def main(argv: list[str] | None = None) -> int:
     }
     report["wikidata"] = wikidata_meta
     report["companies"] = company_rows(envelopes)
+    report["html_output"] = args.html_output
     write_json(report, args.report)
+    if args.html_output:
+        from src.html_report import render_site
+
+        rendered = render_site(envelopes, args.html_output)
+        print()
+        print(f"  html             {rendered['pages']} pages in {args.html_output}")
 
     print()
     print(f"  returned         {report['returned_count']}/{expected}")

@@ -1,4 +1,4 @@
-# Submission — Signalpost Agent
+﻿# Submission — Signalpost Agent
 
 Evidence-first Norwegian company profiles from official public sources.
 
@@ -34,8 +34,16 @@ python run_contract.py \
   --profiles-output profiles.json \
   --report report.json \
   --expected-count 1000 \
-  --keyless --workers 16 --minutes 35
+  --keyless --workers 16 --minutes 35 \
+  --html-output report/html
 ```
+
+The `--html-output` flag additionally renders a self-contained static
+site into `report/html`: a searchable `index.html` plus one page per
+company (offline, no server, works on a phone). Every claim on every
+page links to its source, so a reviewer can find a company, read its
+profile and verify any fact without opening a JSON file. The flag is
+optional and does not change the envelopes or the report.
 
 The input holds one 9-digit organization number per line. The output is
 one terminal envelope per company, in input order, plus a run report that
@@ -45,9 +53,14 @@ drops. Every claim carries source URL, retrieval time and evidence.
 Runs of 500 or more automatically load the frozen Brreg identity export
 (`data/brreg_bulk.csv.gz`) and underenhet export
 (`data/brreg_underenheter.csv.gz`), downloading and caching each once when
-absent. The underenhet export adds registered workplaces without a live
-request per company. To exercise the 100-company path with the
-deterministic registered-website check:
+absent. If the organizer supplies a registry snapshot, point the agent at
+it instead of paying the one-time download with `AGENT_BULK=/path/to/enheter.csv.gz`
+(and `AGENT_UNDERENHETER=` for workplaces); the run also degrades safely
+to live identity requests if the download is unavailable, but no snapshot
+at all at 1,000+ companies cannot fit the request ceiling. The underenhet
+export adds registered workplaces without a live request per company. To
+exercise the 100-company path with the deterministic registered-website
+check:
 
 ```bash
 python run_contract.py \
@@ -132,9 +145,16 @@ fresh clone: **1,916 of 2,000** requests leaves headroom so the tail is
 never dropped at the ceiling. A warm-cache rerun reuses the content
 cache and spends only a few hundred requests.
 
-A 100-company smoke with `--verify-websites` returned 100/100, 2,484
-claims/evidence, 45 workplaces across 44 companies, and 245/2,000 requests
-in 159 s. A fresh cache adds two export downloads; the figures above use
+A 100-company smoke with the frozen snapshot, `--verify-websites` and
+`--html-output` returned **100 / 100 complete**, **2,846 claims / 2,652
+evidence**, 45 workplaces across 44 companies, 10 Wikidata identities
+(2 with an LEI), and **345/2,000 requests** in ~224 s, plus a
+searchable offline site with one page per company. Every module and
+entity state is terminal; the report's invariants
+(`exact_expected_count`, `unique_organisation_numbers`,
+`all_entity_states_terminal`, `all_module_states_terminal`,
+`zero_silent_drops`, `every_envelope_has_organisation_number`) all
+pass. A fresh cache adds two export downloads; the figures above use
 the cached snapshots.
 
 ### Optional enrichment path
@@ -229,6 +249,16 @@ earlier 300/150 split hit 2,000 exactly and dropped the last seven
 companies, which is why the defaults were lowered and a headroom test
 (`tests/test_synthesis.py`) pins the arithmetic.
 
+If the official batch grows past 1,000 companies (the contract says it
+may reach 1,100), the automatic enrichment defaults shrink in proportion
+to the room left by the registry spine so the extra ~130 registry
+requests are taken out of enrichment rather than out of the tail
+companies. Above 1,000 the selection reserves headroom explicitly; at
+1,000 the proven defaults are unchanged. A run that nevertheless reaches
+the ceiling emits an explicit `budget_exhausted` terminal state for the
+affected companies — never a silent drop, and never `submission_error`,
+which would read as a broken agent rather than an exhausted allowance.
+
 ## 6. Company profiles
 
 At least 1,000 profiles are supplied.
@@ -303,6 +333,16 @@ Per company, one JSON profile containing:
   source that failed and every claim that was refused, with the reason.
 - **Changes** — what differs from the previous run, with before and
   after values.
+
+The same run also renders a **self-contained static site** into the
+directory named by `--html-output`: a searchable `index.html` (filter by
+name or org number, state badges, facts/claims/evidence counts, works
+offline on desktop and phone) plus one page per company that groups its
+claims by information family and links every fact to its source. Registry
+text is HTML-escaped on every page; `javascript:` URLs are dropped; each
+envelope is reproducible from the input file. This is the surface a
+reviewer uses to find a company, check its record and verify any fact
+without parsing JSON.
 
 ## 8. Accuracy guarantees
 
@@ -392,7 +432,7 @@ the next run its comparison.
 ## 10. Verification
 
 ```bash
-python -m unittest discover -s tests    # 759 tests
+python -m unittest discover -s tests    # 770 tests
 ruff check .                            # lint, enforced in CI
 mypy                                    # 42 source files, no issues
 ```

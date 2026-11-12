@@ -348,6 +348,53 @@ class EnvelopeTests(unittest.TestCase):
         self.assertEqual(envelope["claims"], [])
         self.assertEqual(envelope["errors"][0]["code"], "profile_error")
 
+    def test_budget_exhausted_record_is_budget_not_submission_error(self):
+        envelope = contract.envelope_for(
+            {
+                "company_number": "123456789",
+                "error": "RequestLimitExceeded: Outbound request limit exceeded: 2000",
+                "budget_exhausted": True,
+            },
+            run_id="run-1",
+            started_at="2026-01-01T00:00:00Z",
+            completed_at="2026-01-01T00:00:03Z",
+        )
+        self.assertEqual(envelope["state"], "budget_exhausted")
+        self.assertTrue(
+            all(
+                state["state"] in contract.TERMINAL_STATES
+                for state in envelope["modules"].values()
+            )
+        )
+
+    def test_budget_exhausted_state_is_terminal(self):
+        self.assertIn("budget_exhausted", contract.TERMINAL_STATES)
+
+    def test_network_source_failure_is_source_error_not_submission_error(self):
+        envelope = contract.envelope_for(
+            {
+                "company_number": "123456789",
+                "error": "ConnectionError: ('Connection aborted.', ConnectionResetError(10054, 'reset', None, 10054, None))",
+            },
+            run_id="run-1",
+            started_at="2026-01-01T00:00:00Z",
+            completed_at="2026-01-01T00:00:03Z",
+        )
+        self.assertEqual(envelope["state"], "source_error")
+        self.assertEqual(
+            envelope["modules"]["registry"]["state"], "source_error"
+        )
+        self.assertIn("source_error", contract.TERMINAL_STATES)
+
+    def test_agent_defect_stays_submission_error(self):
+        envelope = contract.envelope_for(
+            {"company_number": "123456789", "error": "InvalidCompanyNumber: bad"},
+            run_id="run-1",
+            started_at="2026-01-01T00:00:00Z",
+            completed_at="2026-01-01T00:00:03Z",
+        )
+        self.assertEqual(envelope["state"], "submission_error")
+
 
 class ReportTests(unittest.TestCase):
     def _envelopes(self) -> list[dict]:

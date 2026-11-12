@@ -1,4 +1,4 @@
-# Signalpost Agent
+﻿# Signalpost Agent
 
 Builds a **verified, evidence-backed company profile** from a Norwegian
 organization number.
@@ -55,7 +55,12 @@ python run_contract.py \
   --profiles-output profiles.json \
   --report report.json \
   --expected-count 1000 \
-  --keyless --workers 16 --minutes 35
+  --keyless --workers 16 --minutes 35 \
+  --html-output report/html
+
+# The HTML output is a self-contained static site: one index (searchable,
+# works offline and on a phone) plus one page per company with claims
+# grouped by family and every claim linked to its source.
 
 # Runs of 500+ auto-load the frozen Brreg identity and underenhet exports.
 # Explicit snapshots and website verification:
@@ -64,7 +69,7 @@ python run_contract.py --input companies.txt --expected-count 1000 \
   --underenheter data/brreg_underenheter.csv.gz \
   --verify-websites
 
-python -m unittest discover -s tests               # 759 tests
+python -m unittest discover -s tests               # 770 tests
 ruff check .                                         # lint
 mypy                                                 # types (advisory)
 ```
@@ -416,12 +421,13 @@ src/
   wikidata.py      batch SPARQL identity (QID, LEI, website, employees)
   contract.py      terminal envelopes, claims, evidence and report checks
   contract_cli.py  competition contract CLI (`run_contract.py`)
+  html_report.py   self-contained static site renderer for a run
   tinyfish_search.py  search provider adapter
   request_tracker.py  outbound request budget
   __main__.py      single-company CLI (`signalpost`)
 run_batch.py       shim preserving `python run_batch.py`
 run_contract.py    shim preserving `python run_contract.py`
-tests/             759 tests, no network required
+tests/             770 tests, no network required
 tools/              record_fixture.py regenerates the end-to-end recording
 ```
 
