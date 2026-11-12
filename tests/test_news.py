@@ -145,6 +145,23 @@ class NewsFactsTests(unittest.TestCase):
         self.assertEqual(fact["evidence_text"], fact["value"])
         self.assertTrue(fact["source_url"].startswith("https://"))
 
+    def test_undated_items_are_not_published_as_news(self):
+        undated = (
+            b'<?xml version="1.0" encoding="UTF-8"?>\n'
+            b'<rss version="2.0"><channel><title>Google News</title>\n'
+            b'<item><title>Kongsberg Maritime wins contract</title>\n'
+            b'<link>https://example.com/story</link><source>Dagens Naeringsliv</source>\n'
+            b'<description>Kongsberg Maritime confirmed the deal.</description>'
+            b'</item></channel></rss>'
+        )
+        items = parse_feed(undated)
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0].published, "")
+        matches = match_news(items, company_name="Kongsberg Maritime AS")
+        self.assertEqual(len(matches), 1)
+        facts = news_facts(matches, retrieved_at="2026-11-09T21:00:00Z")
+        self.assertEqual(facts, [])
+
 
 class NewsSelectionTests(unittest.TestCase):
     def plan(self, inputs, records, limit):

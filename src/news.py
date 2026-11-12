@@ -201,9 +201,15 @@ def news_facts(
 
     The claim is the headline; the evidence is the same headline, which
     is the text the cited article is published under.
+
+    Items without a parseable publication date are dropped: a real news
+    post carries one, and an undated or feed-modified timestamp is not a
+    publish date. If the date cannot be read, the item is not published.
     """
     facts: list[dict] = []
     for item in matches:
+        if not item.published:
+            continue
         facts.append(
             {
                 "field": "news",
