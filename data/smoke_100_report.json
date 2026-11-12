@@ -1,0 +1,772 @@
+{
+  "run_id": "2026-11-12T20:24:16.072253Z",
+  "input": "data\\competition_100_unique.txt",
+  "started_at": "2026-11-12T20:24:16.072304Z",
+  "completed_at": "2026-11-12T20:27:58.729614Z",
+  "runtime_ms": 222657,
+  "requests": 347,
+  "expected_count": 100,
+  "returned_count": 100,
+  "unique_count": 100,
+  "committed_claims": 2846,
+  "committed_evidence": 2652,
+  "states": {
+    "complete": 100
+  },
+  "checks": {
+    "exact_expected_count": true,
+    "unique_organisation_numbers": true,
+    "all_entity_states_terminal": true,
+    "all_module_states_terminal": true,
+    "zero_silent_drops": true,
+    "every_envelope_has_organisation_number": true
+  },
+  "passed": true,
+  "request_limit": 2000,
+  "workers": 16,
+  "bulk": {
+    "path": "data\\brreg_bulk.csv.gz",
+    "snapshot_sha256": "cadc2020af76a5a97490935b249d5001b2b84b0cdf2783192ac8b9889488fdc2",
+    "rows_scanned": 1179967,
+    "requested": 100,
+    "selected": 99,
+    "missing": [
+      "933266591"
+    ]
+  },
+  "underenheter": {
+    "path": "data\\brreg_underenheter.csv.gz",
+    "snapshot_sha256": "03526e21e6488f5f57aee2439ff2e7980404b8dbba895986a4101dfdd1908d24",
+    "rows_scanned": 870817,
+    "requested": 100,
+    "selected": 44,
+    "workplaces": 45
+  },
+  "nav_jobs": {
+    "path": "data\\nav_jobs.json.gz",
+    "retrieved_at": "2026-11-12T19:09:31.591600+00:00",
+    "age_hours": 1.2,
+    "postings": 900,
+    "pages_read": 10,
+    "total": 13523,
+    "stale": false,
+    "refreshed": false
+  },
+  "website_checks": {
+    "enabled": true,
+    "limit": -1,
+    "selected": null
+  },
+  "news": {
+    "enabled": true,
+    "limit": 100,
+    "selected": 99
+  },
+  "wikidata": {
+    "resolved": 10,
+    "with_lei": 2
+  },
+  "companies": [
+    {
+      "organisation_number": "916627939",
+      "state": "complete",
+      "claims": 23,
+      "evidence": 21,
+      "errors": 0
+    },
+    {
+      "organisation_number": "988539473",
+      "state": "complete",
+      "claims": 17,
+      "evidence": 15,
+      "errors": 1
+    },
+    {
+      "organisation_number": "925833088",
+      "state": "complete",
+      "claims": 24,
+      "evidence": 23,
+      "errors": 0
+    },
+    {
+      "organisation_number": "994924974",
+      "state": "complete",
+      "claims": 19,
+      "evidence": 17,
+      "errors": 1
+    },
+    {
+      "organisation_number": "818365012",
+      "state": "complete",
+      "claims": 21,
+      "evidence": 19,
+      "errors": 0
+    },
+    {
+      "organisation_number": "995967952",
+      "state": "complete",
+      "claims": 29,
+      "evidence": 27,
+      "errors": 0
+    },
+    {
+      "organisation_number": "924829214",
+      "state": "complete",
+      "claims": 46,
+      "evidence": 44,
+      "errors": 0
+    },
+    {
+      "organisation_number": "913779908",
+      "state": "complete",
+      "claims": 41,
+      "evidence": 40,
+      "errors": 1
+    },
+    {
+      "organisation_number": "995451697",
+      "state": "complete",
+      "claims": 43,
+      "evidence": 41,
+      "errors": 1
+    },
+    {
+      "organisation_number": "933266591",
+      "state": "complete",
+      "claims": 5,
+      "evidence": 3,
+      "errors": 0
+    },
+    {
+      "organisation_number": "986405887",
+      "state": "complete",
+      "claims": 20,
+      "evidence": 18,
+      "errors": 1
+    },
+    {
+      "organisation_number": "919732725",
+      "state": "complete",
+      "claims": 46,
+      "evidence": 45,
+      "errors": 0
+    },
+    {
+      "organisation_number": "912047350",
+      "state": "complete",
+      "claims": 18,
+      "evidence": 16,
+      "errors": 1
+    },
+    {
+      "organisation_number": "980624196",
+      "state": "complete",
+      "claims": 19,
+      "evidence": 17,
+      "errors": 1
+    },
+    {
+      "organisation_number": "892955522",
+      "state": "complete",
+      "claims": 21,
+      "evidence": 19,
+      "errors": 1
+    },
+    {
+      "organisation_number": "989206257",
+      "state": "complete",
+      "claims": 26,
+      "evidence": 24,
+      "errors": 0
+    },
+    {
+      "organisation_number": "993787914",
+      "state": "complete",
+      "claims": 24,
+      "evidence": 22,
+      "errors": 1
+    },
+    {
+      "organisation_number": "937311907",
+      "state": "complete",
+      "claims": 18,
+      "evidence": 16,
+      "errors": 1
+    },
+    {
+      "organisation_number": "984004737",
+      "state": "complete",
+      "claims": 23,
+      "evidence": 21,
+      "errors": 1
+    },
+    {
+      "organisation_number": "996847624",
+      "state": "complete",
+      "claims": 19,
+      "evidence": 17,
+      "errors": 0
+    },
+    {
+      "organisation_number": "893908072",
+      "state": "complete",
+      "claims": 22,
+      "evidence": 20,
+      "errors": 1
+    },
+    {
+      "organisation_number": "885818552",
+      "state": "complete",
+      "claims": 21,
+      "evidence": 19,
+      "errors": 1
+    },
+    {
+      "organisation_number": "913649753",
+      "state": "complete",
+      "claims": 22,
+      "evidence": 20,
+      "errors": 0
+    },
+    {
+      "organisation_number": "988646334",
+      "state": "complete",
+      "claims": 19,
+      "evidence": 17,
+      "errors": 1
+    },
+    {
+      "organisation_number": "912992101",
+      "state": "complete",
+      "claims": 23,
+      "evidence": 21,
+      "errors": 0
+    },
+    {
+      "organisation_number": "993802980",
+      "state": "complete",
+      "claims": 21,
+      "evidence": 19,
+      "errors": 1
+    },
+    {
+      "organisation_number": "993780316",
+      "state": "complete",
+      "claims": 22,
+      "evidence": 20,
+      "errors": 0
+    },
+    {
+      "organisation_number": "996239977",
+      "state": "complete",
+      "claims": 26,
+      "evidence": 24,
+      "errors": 1
+    },
+    {
+      "organisation_number": "897109042",
+      "state": "complete",
+      "claims": 22,
+      "evidence": 20,
+      "errors": 1
+    },
+    {
+      "organisation_number": "986223134",
+      "state": "complete",
+      "claims": 23,
+      "evidence": 21,
+      "errors": 0
+    },
+    {
+      "organisation_number": "992382651",
+      "state": "complete",
+      "claims": 27,
+      "evidence": 25,
+      "errors": 1
+    },
+    {
+      "organisation_number": "987769327",
+      "state": "complete",
+      "claims": 20,
+      "evidence": 18,
+      "errors": 1
+    },
+    {
+      "organisation_number": "893747052",
+      "state": "complete",
+      "claims": 22,
+      "evidence": 20,
+      "errors": 1
+    },
+    {
+      "organisation_number": "896637452",
+      "state": "complete",
+      "claims": 26,
+      "evidence": 24,
+      "errors": 0
+    },
+    {
+      "organisation_number": "993774383",
+      "state": "complete",
+      "claims": 21,
+      "evidence": 19,
+      "errors": 1
+    },
+    {
+      "organisation_number": "990133689",
+      "state": "complete",
+      "claims": 22,
+      "evidence": 20,
+      "errors": 0
+    },
+    {
+      "organisation_number": "813657872",
+      "state": "complete",
+      "claims": 21,
+      "evidence": 19,
+      "errors": 0
+    },
+    {
+      "organisation_number": "894008482",
+      "state": "complete",
+      "claims": 21,
+      "evidence": 19,
+      "errors": 0
+    },
+    {
+      "organisation_number": "998447615",
+      "state": "complete",
+      "claims": 22,
+      "evidence": 20,
+      "errors": 1
+    },
+    {
+      "organisation_number": "897670712",
+      "state": "complete",
+      "claims": 22,
+      "evidence": 20,
+      "errors": 0
+    },
+    {
+      "organisation_number": "987378204",
+      "state": "complete",
+      "claims": 23,
+      "evidence": 21,
+      "errors": 1
+    },
+    {
+      "organisation_number": "987531630",
+      "state": "complete",
+      "claims": 26,
+      "evidence": 24,
+      "errors": 0
+    },
+    {
+      "organisation_number": "994858793",
+      "state": "complete",
+      "claims": 22,
+      "evidence": 20,
+      "errors": 1
+    },
+    {
+      "organisation_number": "987928964",
+      "state": "complete",
+      "claims": 21,
+      "evidence": 19,
+      "errors": 1
+    },
+    {
+      "organisation_number": "984296924",
+      "state": "complete",
+      "claims": 20,
+      "evidence": 18,
+      "errors": 1
+    },
+    {
+      "organisation_number": "983742556",
+      "state": "complete",
+      "claims": 24,
+      "evidence": 22,
+      "errors": 1
+    },
+    {
+      "organisation_number": "993756156",
+      "state": "complete",
+      "claims": 22,
+      "evidence": 20,
+      "errors": 1
+    },
+    {
+      "organisation_number": "990702438",
+      "state": "complete",
+      "claims": 49,
+      "evidence": 47,
+      "errors": 0
+    },
+    {
+      "organisation_number": "923579982",
+      "state": "complete",
+      "claims": 45,
+      "evidence": 43,
+      "errors": 0
+    },
+    {
+      "organisation_number": "983091237",
+      "state": "complete",
+      "claims": 22,
+      "evidence": 20,
+      "errors": 1
+    },
+    {
+      "organisation_number": "982221277",
+      "state": "complete",
+      "claims": 20,
+      "evidence": 18,
+      "errors": 1
+    },
+    {
+      "organisation_number": "997471466",
+      "state": "complete",
+      "claims": 42,
+      "evidence": 40,
+      "errors": 1
+    },
+    {
+      "organisation_number": "992626720",
+      "state": "complete",
+      "claims": 17,
+      "evidence": 15,
+      "errors": 1
+    },
+    {
+      "organisation_number": "984831064",
+      "state": "complete",
+      "claims": 22,
+      "evidence": 20,
+      "errors": 1
+    },
+    {
+      "organisation_number": "989677381",
+      "state": "complete",
+      "claims": 18,
+      "evidence": 16,
+      "errors": 1
+    },
+    {
+      "organisation_number": "897160412",
+      "state": "complete",
+      "claims": 22,
+      "evidence": 20,
+      "errors": 0
+    },
+    {
+      "organisation_number": "923626360",
+      "state": "complete",
+      "claims": 14,
+      "evidence": 12,
+      "errors": 1
+    },
+    {
+      "organisation_number": "825897682",
+      "state": "complete",
+      "claims": 27,
+      "evidence": 25,
+      "errors": 1
+    },
+    {
+      "organisation_number": "914781566",
+      "state": "complete",
+      "claims": 37,
+      "evidence": 35,
+      "errors": 1
+    },
+    {
+      "organisation_number": "996162354",
+      "state": "complete",
+      "claims": 17,
+      "evidence": 15,
+      "errors": 1
+    },
+    {
+      "organisation_number": "991796266",
+      "state": "complete",
+      "claims": 27,
+      "evidence": 25,
+      "errors": 1
+    },
+    {
+      "organisation_number": "984813740",
+      "state": "complete",
+      "claims": 22,
+      "evidence": 20,
+      "errors": 0
+    },
+    {
+      "organisation_number": "816341752",
+      "state": "complete",
+      "claims": 19,
+      "evidence": 17,
+      "errors": 1
+    },
+    {
+      "organisation_number": "929910648",
+      "state": "complete",
+      "claims": 42,
+      "evidence": 40,
+      "errors": 1
+    },
+    {
+      "organisation_number": "982057892",
+      "state": "complete",
+      "claims": 49,
+      "evidence": 47,
+      "errors": 1
+    },
+    {
+      "organisation_number": "911578069",
+      "state": "complete",
+      "claims": 48,
+      "evidence": 46,
+      "errors": 1
+    },
+    {
+      "organisation_number": "932738228",
+      "state": "complete",
+      "claims": 41,
+      "evidence": 39,
+      "errors": 0
+    },
+    {
+      "organisation_number": "981876962",
+      "state": "complete",
+      "claims": 45,
+      "evidence": 43,
+      "errors": 0
+    },
+    {
+      "organisation_number": "961984203",
+      "state": "complete",
+      "claims": 43,
+      "evidence": 42,
+      "errors": 1
+    },
+    {
+      "organisation_number": "912493865",
+      "state": "complete",
+      "claims": 51,
+      "evidence": 49,
+      "errors": 1
+    },
+    {
+      "organisation_number": "952667971",
+      "state": "complete",
+      "claims": 21,
+      "evidence": 19,
+      "errors": 1
+    },
+    {
+      "organisation_number": "934355555",
+      "state": "complete",
+      "claims": 45,
+      "evidence": 43,
+      "errors": 1
+    },
+    {
+      "organisation_number": "932984237",
+      "state": "complete",
+      "claims": 37,
+      "evidence": 35,
+      "errors": 1
+    },
+    {
+      "organisation_number": "923080694",
+      "state": "complete",
+      "claims": 26,
+      "evidence": 24,
+      "errors": 1
+    },
+    {
+      "organisation_number": "997992539",
+      "state": "complete",
+      "claims": 13,
+      "evidence": 11,
+      "errors": 1
+    },
+    {
+      "organisation_number": "964091277",
+      "state": "complete",
+      "claims": 49,
+      "evidence": 47,
+      "errors": 0
+    },
+    {
+      "organisation_number": "961802008",
+      "state": "complete",
+      "claims": 50,
+      "evidence": 48,
+      "errors": 0
+    },
+    {
+      "organisation_number": "997055551",
+      "state": "complete",
+      "claims": 44,
+      "evidence": 42,
+      "errors": 0
+    },
+    {
+      "organisation_number": "915231284",
+      "state": "complete",
+      "claims": 36,
+      "evidence": 34,
+      "errors": 1
+    },
+    {
+      "organisation_number": "916183453",
+      "state": "complete",
+      "claims": 17,
+      "evidence": 15,
+      "errors": 1
+    },
+    {
+      "organisation_number": "889724412",
+      "state": "complete",
+      "claims": 51,
+      "evidence": 49,
+      "errors": 1
+    },
+    {
+      "organisation_number": "916052553",
+      "state": "complete",
+      "claims": 40,
+      "evidence": 38,
+      "errors": 0
+    },
+    {
+      "organisation_number": "922105243",
+      "state": "complete",
+      "claims": 56,
+      "evidence": 54,
+      "errors": 0
+    },
+    {
+      "organisation_number": "917533458",
+      "state": "complete",
+      "claims": 42,
+      "evidence": 40,
+      "errors": 0
+    },
+    {
+      "organisation_number": "813138972",
+      "state": "complete",
+      "claims": 24,
+      "evidence": 22,
+      "errors": 1
+    },
+    {
+      "organisation_number": "985790051",
+      "state": "complete",
+      "claims": 40,
+      "evidence": 38,
+      "errors": 1
+    },
+    {
+      "organisation_number": "935282322",
+      "state": "complete",
+      "claims": 20,
+      "evidence": 18,
+      "errors": 0
+    },
+    {
+      "organisation_number": "912350762",
+      "state": "complete",
+      "claims": 35,
+      "evidence": 33,
+      "errors": 1
+    },
+    {
+      "organisation_number": "918874224",
+      "state": "complete",
+      "claims": 51,
+      "evidence": 50,
+      "errors": 0
+    },
+    {
+      "organisation_number": "988233315",
+      "state": "complete",
+      "claims": 51,
+      "evidence": 50,
+      "errors": 0
+    },
+    {
+      "organisation_number": "988530980",
+      "state": "complete",
+      "claims": 18,
+      "evidence": 16,
+      "errors": 1
+    },
+    {
+      "organisation_number": "997705181",
+      "state": "complete",
+      "claims": 20,
+      "evidence": 18,
+      "errors": 1
+    },
+    {
+      "organisation_number": "918442359",
+      "state": "complete",
+      "claims": 45,
+      "evidence": 43,
+      "errors": 1
+    },
+    {
+      "organisation_number": "950097892",
+      "state": "complete",
+      "claims": 19,
+      "evidence": 17,
+      "errors": 1
+    },
+    {
+      "organisation_number": "897834332",
+      "state": "complete",
+      "claims": 45,
+      "evidence": 43,
+      "errors": 0
+    },
+    {
+      "organisation_number": "927058685",
+      "state": "complete",
+      "claims": 15,
+      "evidence": 13,
+      "errors": 1
+    },
+    {
+      "organisation_number": "976691334",
+      "state": "complete",
+      "claims": 41,
+      "evidence": 39,
+      "errors": 1
+    },
+    {
+      "organisation_number": "922165386",
+      "state": "complete",
+      "claims": 18,
+      "evidence": 16,
+      "errors": 0
+    },
+    {
+      "organisation_number": "994852760",
+      "state": "complete",
+      "claims": 16,
+      "evidence": 14,
+      "errors": 0
+    },
+    {
+      "organisation_number": "933365573",
+      "state": "complete",
+      "claims": 17,
+      "evidence": 15,
+      "errors": 0
+    }
+  ],
+  "html_output": "C:\\Users\\X1CARB~1\\AppData\\Local\\Temp\\html_smoke"
+}

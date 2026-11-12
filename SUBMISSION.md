@@ -147,8 +147,9 @@ cache and spends only a few hundred requests.
 
 A 100-company smoke with the frozen snapshot, `--verify-websites` and
 `--html-output` returned **100 / 100 complete**, **2,846 claims / 2,652
-evidence**, 45 workplaces across 44 companies, 10 Wikidata identities
-(2 with an LEI), and **345/2,000 requests** in ~224 s, plus a
+evidence** (committed at `data/smoke_100_report.json`), 45 workplaces
+across 44 companies, 10 Wikidata identities
+(2 with an LEI), and **347/2,000 requests** in ~223 s, plus a
 searchable offline site with one page per company. Every module and
 entity state is terminal; the report's invariants
 (`exact_expected_count`, `unique_organisation_numbers`,

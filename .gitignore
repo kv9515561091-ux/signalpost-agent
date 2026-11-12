@@ -27,6 +27,8 @@ dist/
 report/
 
 # Delivered corpora are tracked despite the data/*.json rule above:
-# the submission requires the profiles to be present in the repository.
+# the submission requires the profiles to be present in the repository,
+# and the 100-company smoke-test report is part of the submission.
 !data/registry_1000.json
 !data/corpus_profiles.json
+!data/smoke_100_report.json
