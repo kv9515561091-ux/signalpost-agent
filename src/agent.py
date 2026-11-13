@@ -1232,24 +1232,27 @@ def _apply_extraction(
                 )
                 _social_facts(profile, page)
                 _activity_facts(profile, page)
-            elif not is_seed and on_registered_domain:
+            elif (
+                not is_seed
+                and on_registered_domain
+                and not (
+                    profile.website_verified and is_careers_url(page.url)
+                )
+            ):
                 # A careers page on the verified domain inherits the
                 # homepage's identity proof. Posting pages rarely repeat
                 # the organization number or the registered name, and
                 # requiring them was why the jobs family was empty.
-                if not (
-                    profile.website_verified and is_careers_url(page.url)
-                ):
-                    check = verify_registered_page(identity, page)
-                    if not check.verified:
-                        profile.retrieval_errors.append(
-                            f"page {source.domain}: follow-up omitted because "
-                            "it does not carry this company's organization "
-                            "number or exact name"
-                        )
-                        if is_careers_url(page.url):
-                            enqueue_careers_index(source, page)
-                        continue
+                check = verify_registered_page(identity, page)
+                if not check.verified:
+                    profile.retrieval_errors.append(
+                        f"page {source.domain}: follow-up omitted because "
+                        "it does not carry this company's organization "
+                        "number or exact name"
+                    )
+                    if is_careers_url(page.url):
+                        enqueue_careers_index(source, page)
+                    continue
 
             if on_registered_domain and is_careers_url(page.url):
                 enqueue_careers_index(source, page)

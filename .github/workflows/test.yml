@@ -34,9 +34,11 @@ jobs:
         run: python -m unittest discover -s tests -v
 
       - name: Lint (ruff)
-        # Blocking. ruff is configured in pyproject.toml.
+        # Blocking. ruff is configured in pyproject.toml. Version
+        # pinned so new releases cannot fail an unrelated push the
+        # way an unpinned upgrade did.
         run: |
-          pip install "ruff>=0.6"
+          pip install "ruff==0.17.5"
           ruff check .
 
       - name: Type check (mypy)
